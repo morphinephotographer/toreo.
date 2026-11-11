@@ -108,6 +108,13 @@ struct ImportPanel: View {
 struct PreferencesPanel: View {
     @Bindable var store: Store
 
+    private var buildVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        if let version, let build { return "\(version) (\(build))" }
+        return version ?? build ?? ""
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PanelHeader(tr("Настройки")) {
@@ -136,6 +143,18 @@ struct PreferencesPanel: View {
                 Text(message).foregroundStyle(.orange).lineLimit(2)
             }
             Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Text(verbatim: "Created by MORPHINE")
+                if !buildVersion.isEmpty {
+                    Text(verbatim: "·")
+                        .accessibilityHidden(true)
+                    Text(verbatim: buildVersion)
+                        .monospacedDigit()
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
         }
     }
 
