@@ -32,16 +32,12 @@ struct MenuPanel: View {
     var body: some View {
         Group {
             if let draft = store.draft {
-                ImportPanel(store: store, draft: draft).id(draft.id)
+                ImportPanel(store: store, draft: draft, goBack: goBack).id(draft.id)
             } else if store.settingsPresented {
                 PreferencesPanel(store: store)
                     .transition(.opacity)
             } else if store.inspector {
-                VStack(alignment: .leading, spacing: 8) {
-                    Button(tr("Назад"), systemImage: "chevron.left") { store.inspector = false }
-                        .buttonStyle(ClearGlassButtonStyle())
-                    FileInspector(store: store)
-                }
+                FileInspector(store: store, goBack: goBack)
             } else {
                 transferList
                     .transition(.opacity)
@@ -145,18 +141,18 @@ struct MenuPanel: View {
             store.draft = nil
             store.message = nil
             store.nextImport()
-        } else if store.magnetPrompt || store.addChoicesPresented {
-            store.magnetPrompt = false
-            store.addChoicesPresented = false
         } else if store.settingsPresented {
             store.settingsPresented = false
             store.message = nil
+        } else if store.inspector {
+            store.inspector = false
+        } else if store.magnetPrompt || store.addChoicesPresented {
+            store.magnetPrompt = false
+            store.addChoicesPresented = false
         } else if store.removalOptions != nil || store.expandedProblem != nil || store.armedRemoval != nil {
             store.removalOptions = nil
             store.expandedProblem = nil
             store.armedRemoval = nil
-        } else if store.inspector {
-            store.inspector = false
         } else {
             dismiss()
         }
@@ -211,7 +207,8 @@ struct MenuPanel: View {
                         .keyboardShortcut("o")
                         Button(tr("Magnet-ссылка")) {
                             store.dismissTransientOptions()
-                            store.pasteMagnet()
+                            store.magnetText = ""
+                            store.magnetPrompt = true
                         }
                         .keyboardShortcut("v", modifiers: [.command, .shift])
                     }
@@ -501,11 +498,13 @@ struct ClearGlassButtonStyle: ButtonStyle {
             label
                 .padding(.horizontal, 6)
                 .frame(width: MenuGrid.choiceWidth, height: MenuGrid.control)
+                .contentShape(Capsule())
                 .glassEffect(.clear.interactive(), in: .capsule)
         } else if bordered {
             label
                 .padding(.horizontal, compact ? 0 : horizontalInset)
                 .padding(.vertical, compact ? 0 : verticalInset)
+                .contentShape(Capsule())
                 .glassEffect(.clear.interactive(), in: .capsule)
         } else {
             label

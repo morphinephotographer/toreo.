@@ -95,6 +95,7 @@ enum Snapshot {
                 throw RillError("Нажатие на свободное место не закрыло действия.")
             }
             print("PASS blank-space click dismisses add and removal options")
+            try await checkAddButtons(in: window, store: store)
             store.unavailableFiles.insert(completed.hashString)
             try await captureState(window, name: "warning-\(name)", to: directory)
             store.expandedProblem = completed.hashString
@@ -138,6 +139,18 @@ enum Snapshot {
             try await captureState(window, name: "search-\(name)", to: directory)
             store.searchText = ""
             store.preferences.downloadDir = "/Users/Example/Downloads"
+            store.selection = example.id
+            store.inspector = true
+            try await Task.sleep(for: .milliseconds(200))
+            store.fileError = nil
+            store.fileStates = files.enumerated().map { index, file in
+                FileState(id: index, file: file, wanted: index == 0)
+            }
+            try await captureState(window, name: "files-\(name)", to: directory)
+            try click(in: window, at: NSPoint(x: 340, y: window.frame.height - 52))
+            try await Task.sleep(for: .milliseconds(200))
+            guard !store.inspector else { throw RillError("Кнопка «Назад» не закрыла список файлов.") }
+            store.selection = nil
             store.draft = ImportDraft(name: example.name, bytes: nil, magnet: nil,
                                       files: files, folder: "/Users/Example/Downloads")
             try await captureState(window, name: "import-\(name)", to: directory)
@@ -175,6 +188,34 @@ enum Snapshot {
                                                 eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
             window.sendEvent(event)
         }
+    }
+
+    private static func checkAddButtons(in window: NSWindow, store: Store) async throws {
+        try await Task.sleep(for: .milliseconds(300))
+        // Click the glass around the labels, near the top of the file button
+        // and near the bottom of the magnet button.
+        try click(in: window, at: NSPoint(x: 292, y: 36))
+        try await Task.sleep(for: .milliseconds(300))
+        try click(in: window, at: NSPoint(x: 104, y: 48))
+        try await Task.sleep(for: .milliseconds(400))
+        guard let picker = NSApp.windows.first(where: { $0 is NSOpenPanel && $0.isVisible }) as? NSOpenPanel else {
+            throw RillError("Кнопка торрент-файла не открыла системный выбор файла.")
+        }
+        picker.cancel(nil)
+        window.makeKeyAndOrderFront(nil)
+        try await Task.sleep(for: .milliseconds(300))
+
+        try click(in: window, at: NSPoint(x: 292, y: 36))
+        try await Task.sleep(for: .milliseconds(300))
+        try click(in: window, at: NSPoint(x: 220, y: 24))
+        try await Task.sleep(for: .milliseconds(300))
+        guard store.magnetPrompt, !store.addChoicesPresented, store.magnetText.isEmpty else {
+            throw RillError("Кнопка magnet не открыла поле для ввода ссылки.")
+        }
+        try click(in: window, at: NSPoint(x: 340, y: 36))
+        try await Task.sleep(for: .milliseconds(300))
+        guard !store.magnetPrompt else { throw RillError("Поле magnet не закрылось.") }
+        print("PASS file and magnet buttons respond away from their labels")
     }
 
     private static func captureState(_ window: NSWindow, name: String, to directory: URL) async throws {

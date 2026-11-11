@@ -162,9 +162,11 @@ final class Store {
         panel.title = tr("Добавить раздачу")
         panel.allowedContentTypes = [UTType(filenameExtension: "torrent") ?? .data]
         panel.allowsMultipleSelection = true
-        let result = panel.runModal()
-        indicators?.showPanel()
-        if result == .OK { enqueue(panel.urls) }
+        panel.begin { [weak self] result in
+            guard let self else { return }
+            self.indicators?.showPanel()
+            if result == .OK { self.enqueue(panel.urls) }
+        }
     }
 
     func chooseFolder(_ initial: String) -> String? {
@@ -178,17 +180,6 @@ final class Store {
         let result = panel.runModal()
         indicators?.showPanel()
         return result == .OK ? panel.url?.path : nil
-    }
-
-    func pasteMagnet() {
-        let content = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if let url = URL(string: content), url.scheme?.lowercased() == "magnet" {
-            enqueue([url])
-        } else {
-            magnetText = ""
-            magnetPrompt = true
-            indicators?.showPanel()
-        }
     }
 
     func enqueue(_ urls: [URL]) {

@@ -2,45 +2,39 @@ import SwiftUI
 
 struct FileInspector: View {
     var store: Store
+    var goBack: () -> Void
+
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 12) {
+            PanelHeader(tr("Файлы")) {
+                MenuCircle("Назад", symbol: "chevron.left", action: goBack)
+            }
+
             if let transfer = store.selected {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(tr("Файлы")).font(.headline)
-                    Text(transfer.name).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    Divider()
-                    if let error = store.fileError {
-                        Text(error).foregroundStyle(.orange).font(.callout)
-                    } else if transfer.metadataPercentComplete < 1 {
-                        Text(tr("Список появится после получения метаданных.")).foregroundStyle(.secondary)
-                    } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(store.fileStates) { state in
-                                    Toggle(isOn: Binding(
-                                        get: { state.wanted },
-                                        set: { store.setWanted(transfer, index: state.id, wanted: $0) }
-                                    )) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(state.file.name).lineLimit(1)
-                                            Text(bytes(state.file.length)).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                    }.toggleStyle(.checkbox)
-                                }
+                Text(transfer.name).font(.callout.weight(.semibold)).lineLimit(2)
+                if transfer.metadataPercentComplete < 1 {
+                    Text(tr("Список появится после получения метаданных."))
+                        .font(.callout).foregroundStyle(.secondary)
+                } else if let error = store.fileError {
+                    Text(error).font(.callout).foregroundStyle(.orange).lineLimit(2)
+                } else {
+                    TransferFileList(count: store.fileStates.count) {
+                        ForEach(store.fileStates) { state in
+                            TransferFileRow(file: state.file, isSelected: state.wanted) {
+                                store.setWanted(transfer, index: state.id, wanted: !state.wanted)
                             }
                         }
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(height: 180)
             } else {
-                ContentUnavailableView(tr("Выберите передачу"), systemImage: "doc")
+                Text(tr("Выберите передачу")).font(.callout).foregroundStyle(.secondary)
             }
         }
         .task(id: store.selected.map { "\($0.hashString)|\($0.metadataPercentComplete >= 1)" }) {
             store.fileStates = []
             store.fileError = nil
-            await store.loadFiles(store.selected)
+            guard let transfer = store.selected, transfer.metadataPercentComplete >= 1 else { return }
+            await store.loadFiles(transfer)
         }
     }
 }
@@ -48,60 +42,117 @@ struct FileInspector: View {
 struct ImportPanel: View {
     var store: Store
     @State var draft: ImportDraft
+    var goBack: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(tr("Добавить передачу")).font(.title2.bold())
-            Text(draft.name).lineLimit(2)
-            HStack(spacing: 8) {
-                Label(draft.folder, systemImage: "folder").lineLimit(1).truncationMode(.middle)
-                Spacer()
-                Button(tr("Выбрать…")) { if let path = store.chooseFolder(draft.folder) { draft.folder = path } }
+        VStack(alignment: .leading, spacing: 12) {
+            PanelHeader(tr("Добавить передачу")) {
+                MenuCircle("Назад", symbol: "chevron.left", action: goBack)
+                    .disabled(store.busy)
             }
-            .foregroundStyle(.secondary)
+
+            Text(draft.name).font(.callout.weight(.semibold)).lineLimit(2)
+            TransferFolderRow(title: "Папка загрузки", path: draft.folder) {
+                if let folder = store.chooseFolder(draft.folder) { draft.folder = folder }
+            }
             if draft.files.isEmpty {
                 Text(tr("Список файлов появится, когда magnet получит метаданные."))
                     .font(.callout).foregroundStyle(.secondary)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(draft.files.indices, id: \.self) { index in
-                            Toggle(isOn: Binding(
-                                get: { !draft.excluded.contains(index) },
-                                set: { wanted in
-                                    if wanted { draft.excluded.remove(index) }
-                                    else { draft.excluded.insert(index) }
-                                }
-                            )) {
-                                HStack {
-                                    Text(draft.files[index].name).lineLimit(1)
-                                    Spacer()
-                                    Text(bytes(draft.files[index].length)).foregroundStyle(.secondary).monospacedDigit()
-                                }
-                            }.toggleStyle(.checkbox)
+                TransferFileList(count: draft.files.count) {
+                    ForEach(draft.files.indices, id: \.self) { index in
+                        let isSelected = !draft.excluded.contains(index)
+                        TransferFileRow(file: draft.files[index], isSelected: isSelected) {
+                            if isSelected { draft.excluded.insert(index) }
+                            else { draft.excluded.remove(index) }
                         }
-                    }.padding(8)
+                    }
                 }
-                .frame(height: min(200, CGFloat(draft.files.count) * 24 + 16))
-                .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
             }
-            Toggle(tr("Начать сразу"), isOn: $draft.start).toggleStyle(.checkbox)
-            if let message = store.message { Text(message).font(.callout).foregroundStyle(.orange) }
-            HStack {
-                Spacer()
-                Button(tr("Отмена"), role: .cancel) {
-                    store.draft = nil
+
+            if let message = store.message {
+                Text(message).font(.callout).foregroundStyle(.orange).lineLimit(2)
+            }
+            HStack(spacing: MenuGrid.gutter) {
+                Toggle(tr("Начать сразу"), isOn: $draft.start)
+                    .toggleStyle(.switch)
+                    .font(.callout)
+                    .padding(.horizontal, MenuGrid.gutter)
+                Spacer(minLength: 0)
+                MenuCircle("Добавить", symbol: "plus") {
                     store.message = nil
-                    store.nextImport()
+                    store.add(draft)
                 }
-                .disabled(store.busy)
-                Button(tr("Добавить")) { store.message = nil; store.add(draft) }
-                    .buttonStyle(ClearGlassButtonStyle())
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(store.busy || (!draft.files.isEmpty && draft.excluded.count == draft.files.count))
+                .keyboardShortcut(.defaultAction)
+                .disabled(store.busy || (!draft.files.isEmpty && draft.excluded.count == draft.files.count))
             }
+            .padding(.trailing, MenuGrid.gutter)
         }
-        .buttonStyle(ClearGlassButtonStyle())
+    }
+}
+
+private struct TransferFileList<Rows: View>: View {
+    let count: Int
+    @ViewBuilder var rows: () -> Rows
+
+    var body: some View {
+        if count > 3 {
+            ScrollView { fileRows }
+                .frame(height: 188)
+        } else {
+            fileRows
+        }
+    }
+
+    private var fileRows: some View {
+        LazyVStack(spacing: 4, content: rows)
+    }
+}
+
+private struct TransferFileRow: View {
+    let file: TorrentFile
+    let isSelected: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: MenuGrid.gutter) {
+            MenuCircle(file.name, symbol: isSelected ? "checkmark" : "minus",
+                       color: isSelected ? .primary : .secondary, action: toggle)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            TransferRowText(title: file.name, detail: bytes(file.length))
+        }
+        .transferCard()
+    }
+}
+
+private struct TransferFolderRow: View {
+    let title: String
+    let path: String
+    let select: () -> Void
+
+    var body: some View {
+        HStack(spacing: MenuGrid.gutter) {
+            MenuCircle("Выбрать папку", symbol: "folder", action: select)
+            TransferRowText(title: tr(title), detail: path)
+        }
+        .transferCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(tr(title)))
+    }
+}
+
+private struct TransferRowText: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 14, weight: .semibold))
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -159,19 +210,8 @@ struct PreferencesPanel: View {
     }
 
     private func folderRow(_ title: String, path: String, select: @escaping (String) -> Void) -> some View {
-        HStack(spacing: 8) {
-            MenuCircle(tr("Выбрать папку"), symbol: "folder") {
-                if let folder = store.chooseFolder(path) { select(folder) }
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(tr(title)).font(.system(size: 14, weight: .semibold))
-                Text(path).font(.caption).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        TransferFolderRow(title: title, path: path) {
+            if let folder = store.chooseFolder(path) { select(folder) }
         }
-        .transferCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(tr(title)))
     }
 }
