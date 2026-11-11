@@ -77,9 +77,15 @@ final class ToreoDelegate: NSObject, NSApplicationDelegate {
         let store = Store.shared
         store.indicators?.reset()
         store.indicators = nil
-        Task {
-            await store.close()
-            sender.reply(toApplicationShouldTerminate: true)
+        let closing = store.beginClose()
+        Task.detached {
+            await closing.value
+            // AppKit waits in a modal run loop after .terminateLater.
+            RunLoop.main.perform(inModes: [.default, .modalPanel]) {
+                MainActor.assumeIsolated {
+                    sender.reply(toApplicationShouldTerminate: true)
+                }
+            }
         }
         return .terminateLater
     }

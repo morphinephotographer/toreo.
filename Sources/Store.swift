@@ -137,12 +137,19 @@ final class Store {
     }
 
     func close() async {
+        await beginClose().value
+    }
+
+    func beginClose() -> Task<Void, Never> {
         closing = true
         ready = false
         poller?.cancel()
         importPoller?.cancel()
-        await folderUpdate?.value
-        await engine.close()
+        let pendingFolderUpdate = folderUpdate
+        return Task.detached { [engine] in
+            await pendingFolderUpdate?.value
+            await engine.close()
+        }
     }
 
     private func refresh() async {
@@ -368,14 +375,23 @@ final class Store {
 
     func setDownloadFolder(_ path: String) {
         let previous = folderUpdate
-        folderUpdate = Task {
+        folderUpdate = Task.detached { [engine, weak self] in
             await previous?.value
+            let errorMessage: String?
             do {
                 try await engine.setDownloadFolder(path)
                 UserDefaults.standard.set(path, forKey: "DownloadFolder")
-                preferences.downloadDir = path
-                message = nil
-            } catch { message = error.localizedDescription }
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            RunLoop.main.perform { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, !self.closing else { return }
+                    if errorMessage == nil { self.preferences.downloadDir = path }
+                    self.message = errorMessage
+                }
+            }
         }
     }
 

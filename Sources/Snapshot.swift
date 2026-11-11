@@ -11,9 +11,9 @@ enum Snapshot {
         defer { indicators.reset() }
         let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
-        func transfer(_ id: Int, complete: Bool = false, error: Int = 0) -> Transfer {
+        func transfer(_ id: Int, complete: Bool = false, error: Int = 0, verifying: Bool = false) -> Transfer {
             Transfer(id: id, name: "Status icon test", hashString: "status-\(id)", downloadDir: "/tmp",
-                     errorString: "", status: complete ? 6 : 4, error: error, eta: 0, queuePosition: 0,
+                     errorString: "", status: verifying ? 2 : (complete ? 6 : 4), error: error, eta: 0, queuePosition: 0,
                      percentDone: complete ? 1 : 0.5, metadataPercentComplete: 1, uploadRatio: 0,
                      recheckProgress: 0, sizeWhenDone: 100, leftUntilDone: complete ? 0 : 50,
                      rateDownload: complete ? 0 : 1000, rateUpload: 0, uploadedEver: 0, isFinished: complete)
@@ -104,17 +104,32 @@ enum Snapshot {
         }
         print("PASS tracker warnings keep the wave and the check; one acknowledgement clears the queue")
 
+        store.transfers = [transfer(6, verifying: true)]
+        indicators.update(from: store)
+        store.transfers = [transfer(6, complete: true)]
+        indicators.update(from: store)
+        guard !indicators.completionPending, completionCount == 4 else {
+            throw RillError("Verifying a finished transfer triggered a new completion.")
+        }
+        print("PASS rechecking a finished transfer produces no new check or sound")
+
         store.transfers = []
         indicators.update(from: store)
         try await captureStatusButton(button, name: "08-idle-again", to: directory)
+        store.magnetPrompt = true
         button.performClick(nil)
+        // Let the app activate and anchor the panel before the next click.
+        try await Task.sleep(for: .milliseconds(350))
         guard indicators.popoverIsShown else { throw RillError("The status item did not open the popover.") }
         button.performClick(nil)
         try await Task.sleep(for: .milliseconds(400))
         guard !indicators.popoverIsShown else { throw RillError("A second click did not close the popover.") }
         button.performClick(nil)
+        try await Task.sleep(for: .milliseconds(350))
         guard indicators.popoverIsShown else { throw RillError("The status item did not reopen the popover.") }
+        guard indicators.popoverHasTextFocus else { throw RillError("The magnet field did not regain focus.") }
         button.performClick(nil)
+        print("PASS magnet field regains focus when the popover reopens")
         print("PASS native status item, completion queue, errors, resume, idle and menu action (Reduce Motion: \(reducedMotion))")
     }
 

@@ -46,7 +46,10 @@ final class Indicators: NSObject, NSPopoverDelegate {
     @objc private func togglePopover() {
         if completionPending { acknowledgeCompletion() }
         if popover.isShown {
-            popover.performClose(nil)
+            // Close before AppKit can re-anchor the panel while it animates out.
+            popover.animates = false
+            popover.close()
+            popover.animates = true
         } else if ProcessInfo.processInfo.systemUptime - lastClose < 0.3 {
             // A transient popover closes on mouse down outside it, before this mouse-up action.
             // A click on the icon that just closed the panel must not open it again.
@@ -133,6 +136,7 @@ final class Indicators: NSObject, NSPopoverDelegate {
 
     var statusIconIsVisible: Bool { item?.button?.image != nil }
     var statusIconIsTemplate: Bool { item?.button?.image?.isTemplate == true }
+    var popoverHasTextFocus: Bool { popover.contentViewController?.view.window?.firstResponder is NSTextView }
     var statusButtonForSnapshot: NSStatusBarButton? { item?.button }
     var popoverIsShown: Bool { popover.isShown }
 }

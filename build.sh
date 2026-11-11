@@ -43,7 +43,8 @@ macro_flags=()
 if [[ "${RILL_DISABLE_MACRO_SANDBOX:-0}" == 1 ]]; then
   macro_flags=(-Xfrontend -disable-sandbox)
 fi
-xcrun swiftc "${macro_flags[@]}" -swift-version 6 -O -target arm64-apple-macos26.0 \
+# Bash 3.2 treats an empty array as unset under set -u.
+xcrun swiftc ${macro_flags[@]+"${macro_flags[@]}"} -swift-version 6 -O -target arm64-apple-macos26.0 \
   -module-cache-path "$work/module-cache" -import-objc-header "$root/Engine/Bridge.h" \
   -L "$app/Contents/Frameworks" -lRillEngine -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   "$root"/Sources/*.swift -o "$app/Contents/MacOS/Toreo"

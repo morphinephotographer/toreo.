@@ -235,11 +235,19 @@ enum AppCheck {
             throw RillError("Не найдена панель для проверки выключения.")
         }
         try await Task.sleep(for: .milliseconds(700))
-        try Snapshot.click(in: window, at: NSPoint(x: 340, y: 36))
-        guard !window.isVisible, store.indicators == nil else {
-            throw RillError("Панель и значок должны исчезать сразу при выходе.")
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: NSApp, queue: nil
+        ) { _ in
+            MainActor.assumeIsolated {
+                guard !window.isVisible, store.indicators == nil else {
+                    fputs("Панель и значок должны исчезнуть при выходе.\n", stderr)
+                    exit(1)
+                }
+                print("PASS quit closes the panel and removes the status item")
+            }
         }
-        print("PASS quit hides the panel and removes the status item immediately")
+        defer { NotificationCenter.default.removeObserver(observer) }
+        try Snapshot.click(in: window, at: NSPoint(x: 340, y: 36))
         try await Task.sleep(for: .seconds(25))
         throw RillError("Кнопка выключения не завершила приложение.")
     }
