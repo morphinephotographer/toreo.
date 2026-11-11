@@ -3,6 +3,102 @@ import SwiftUI
 
 @MainActor
 enum Snapshot {
+    static func checkStatusIcon(to directory: URL) async throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = Store()
+        var completionCount = 0
+        let indicators = Indicators(store: store, completionSound: { completionCount += 1 })
+        defer { indicators.reset() }
+        let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+        func transfer(_ id: Int, complete: Bool = false, error: Int = 0) -> Transfer {
+            Transfer(id: id, name: "Status icon test", hashString: "status-\(id)", downloadDir: "/tmp",
+                     errorString: "", status: complete ? 6 : 4, error: error, eta: 0, queuePosition: 0,
+                     percentDone: complete ? 1 : 0.5, metadataPercentComplete: 1, uploadRatio: 0,
+                     recheckProgress: 0, sizeWhenDone: 100, leftUntilDone: complete ? 0 : 50,
+                     rateDownload: complete ? 0 : 1000, rateUpload: 0, uploadedEver: 0, isFinished: complete)
+        }
+
+        indicators.update(from: store)
+        try await Task.sleep(for: .milliseconds(350))
+        guard let button = indicators.statusButtonForSnapshot, let initialImage = button.image,
+              initialImage.isTemplate, button.window?.isVisible == true else {
+            throw RillError("The native status item is not visible or its image is not a template.")
+        }
+        try await captureStatusButton(button, name: "01-idle", to: directory)
+        guard button.image === initialImage else { throw RillError("Idle icon rendered again.") }
+
+        store.transfers = [transfer(1), transfer(2), transfer(3), transfer(4)]
+        indicators.update(from: store)
+        try await Task.sleep(for: .milliseconds(330))
+        let firstWave = button.image
+        try await captureStatusButton(button, name: "02-downloading", to: directory)
+        try await Task.sleep(for: .milliseconds(350))
+        guard (button.image === firstWave) == reducedMotion else {
+            throw RillError("The wave did not follow the system Reduce Motion setting.")
+        }
+        try await captureStatusButton(button, name: "03-downloading", to: directory)
+
+        store.transfers = [transfer(1, complete: true), transfer(2, complete: true),
+                           transfer(3), transfer(4, complete: true, error: 3)]
+        indicators.update(from: store)
+        indicators.update(from: store)
+        guard indicators.completionPending, completionCount == 1 else {
+            throw RillError("The first completion did not start exactly once.")
+        }
+        if !reducedMotion {
+            try await Task.sleep(for: .milliseconds(280))
+            try await captureStatusButton(button, name: "04-flatten", to: directory)
+            try await Task.sleep(for: .milliseconds(140))
+            try await captureStatusButton(button, name: "05-draw-check", to: directory)
+        }
+        try await Task.sleep(for: .milliseconds(350))
+        try await captureStatusButton(button, name: "06-completed", to: directory)
+        for _ in 0..<40 where completionCount < 2 {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard completionCount == 2, indicators.completionPending else {
+            throw RillError("The simultaneous completion was not queued.")
+        }
+        for _ in 0..<40 where indicators.completionPending {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard completionCount == 2, !indicators.completionPending else {
+            throw RillError("Completion did not clear or an error triggered a success animation.")
+        }
+        let resumedWave = button.image
+        try await captureStatusButton(button, name: "07-resumed", to: directory)
+        try await Task.sleep(for: .milliseconds(120))
+        guard (button.image === resumedWave) == reducedMotion else {
+            throw RillError("The wave did not return to the correct state.")
+        }
+        store.transfers = []
+        indicators.update(from: store)
+        try await captureStatusButton(button, name: "08-idle-again", to: directory)
+        button.performClick(nil)
+        guard indicators.popoverIsShown else { throw RillError("The status item did not open the popover.") }
+        button.performClick(nil)
+        print("PASS native status item, completion queue, errors, resume, idle and menu action (Reduce Motion: \(reducedMotion))")
+    }
+
+    private static func captureStatusButton(_ button: NSStatusBarButton, name: String, to directory: URL) async throws {
+        guard let window = button.window, let mainDisplay = NSScreen.screens.first else {
+            throw RillError("The status item window is missing.")
+        }
+        let rect = window.convertToScreen(button.convert(button.bounds, to: nil)).integral
+        let region = [rect.minX, mainDisplay.frame.maxY - rect.maxY, rect.width, rect.height]
+            .map { String(Int($0)) }.joined(separator: ",")
+        let path = directory.appending(path: "\(name).png").path
+        try await Task.detached {
+            let capture = Process()
+            capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            capture.arguments = ["-x", "-R", region, path]
+            try capture.run()
+            capture.waitUntilExit()
+            guard capture.terminationStatus == 0 else { throw RillError("Menu bar screenshot failed.") }
+        }.value
+    }
+
     static func write(to directory: URL) async throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = Store.shared
@@ -114,6 +210,7 @@ enum Snapshot {
                 throw RillError("Размер панели: \(window.frame), ожидалось \(width); видно \(window.isVisible), окно \(window.windowNumber)/\(windowNumber).")
             }
             try indicators.checkPanelPlacement()
+            try await checkDockIcon(in: window, store: store, appearance: name, to: directory)
             for language in AppLanguage.allCases {
                 store.language = language
                 try await captureState(window, name: "settings-\(language.rawValue)-\(name)", to: directory)
@@ -188,6 +285,31 @@ enum Snapshot {
                                                 eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
             window.sendEvent(event)
         }
+    }
+
+    private static func checkDockIcon(in window: NSWindow, store: Store, appearance: String, to directory: URL) async throws {
+        let initial = store.dockIcon
+        let saved = UserDefaults.standard.object(forKey: DockIcon.preferenceKey)
+        defer {
+            store.setDockIcon(initial)
+            UserDefaults.standard.set(saved, forKey: DockIcon.preferenceKey)
+        }
+        store.setDockIcon(.hidden)
+        try await Task.sleep(for: .milliseconds(200))
+        let visibleIcons = DockIcon.allCases.filter { $0 != .hidden }
+        for icon in visibleIcons + [.hidden] {
+            try click(in: window, at: NSPoint(x: 44, y: 82))
+            try await Task.sleep(for: .milliseconds(300))
+            let expectedPolicy: NSApplication.ActivationPolicy = icon == .hidden ? .accessory : .regular
+            guard store.dockIcon == icon, Store().dockIcon == icon,
+                  NSApp.activationPolicy() == expectedPolicy else {
+                throw RillError("Dock icon choice did not apply or persist: \(icon.rawValue).")
+            }
+            if icon == .blue {
+                try captureWindow(window, name: "dock-icon-\(appearance)", to: directory)
+            }
+        }
+        print("PASS Dock icon choice cycles, applies and persists (\(appearance))")
     }
 
     private static func checkAddButtons(in window: NSWindow, store: Store) async throws {

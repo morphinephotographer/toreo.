@@ -177,7 +177,7 @@ enum AppCheck {
         display.transfers = [try JSONDecoder().decode(Transfer.self, from: completedData)]
         indicators.update(from: display)
         indicators.update(from: display)
-        guard indicators.completionPending, soundCount == 1, !Indicators.completedImage().isTemplate else {
+        guard indicators.completionPending, soundCount == 1, indicators.statusIconIsTemplate else {
             throw RillError("Уведомление о завершении не сработало или повторилось.")
         }
         indicators.acknowledgeCompletion()
@@ -186,8 +186,8 @@ enum AppCheck {
         display.transfers = []
         indicators.update(from: display)
         guard display.downloadProgress == nil else { throw RillError("Прогресс не сбросился.") }
+        guard indicators.statusIconIsTemplate else { throw RillError("Значок не адаптируется к строке меню.") }
         indicators.reset()
-        guard Indicators.statusImage().isTemplate else { throw RillError("Значок не адаптируется к строке меню.") }
         print("PASS menu bar uses an adaptive template icon")
     }
 

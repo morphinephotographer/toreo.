@@ -5,8 +5,8 @@ import SwiftUI
 final class Indicators: NSObject {
     private var item: NSStatusItem?
     private let popover = NSPopover()
-    private var previousCompletion: [String: Bool] = [:]
-    private(set) var completionPending = false
+    private var statusIcon: MenuBarIcon?
+    var completionPending: Bool { statusIcon?.completionPending == true }
     private let completionSound: @MainActor () -> Void
 
     init(store: Store, completionSound: @escaping @MainActor () -> Void = Indicators.playCompletionSound) {
@@ -27,27 +27,18 @@ final class Indicators: NSObject {
     }
 
     func update(from store: Store) {
-        let completed = store.transfers.contains {
-            previousCompletion[$0.hashString] == false && $0.complete && $0.error == 0
-        }
-        previousCompletion = Dictionary(store.transfers.map { ($0.hashString, $0.complete) },
-                                        uniquingKeysWith: { _, latest in latest })
-        if completed {
-            completionPending = true
-            completionSound()
-        }
         if item == nil {
             let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             status.button?.target = self
             status.button?.action = #selector(togglePopover)
             status.button?.imagePosition = .imageOnly
             item = status
+            if let button = status.button {
+                button.toolTip = nil
+                statusIcon = MenuBarIcon(button: button, completionSound: completionSound)
+            }
         }
-        if let button = item?.button, button.image == nil || button.image?.isTemplate == completionPending {
-            button.image = completionPending ? Self.completedImage() : Self.statusImage()
-        }
-        item?.button?.toolTip = nil
-        item?.button?.setAccessibilityLabel(completionPending ? tr("Загрузка завершена") : tr("Передачи toreo."))
+        statusIcon?.update(transfers: store.transfers)
     }
 
     @objc private func togglePopover() {
@@ -98,41 +89,7 @@ final class Indicators: NSObject {
     }
 
     func acknowledgeCompletion() {
-        completionPending = false
-        item?.button?.image = Self.statusImage()
-        item?.button?.setAccessibilityLabel(tr("Передачи toreo."))
-    }
-
-    static func completedImage() -> NSImage {
-        let image = NSImage(size: NSSize(width: 20, height: 20), flipped: false) { _ in
-            NSColor.systemGreen.setStroke()
-            let path = NSBezierPath()
-            path.move(to: NSPoint(x: 4, y: 10))
-            path.line(to: NSPoint(x: 8, y: 6))
-            path.line(to: NSPoint(x: 16, y: 15))
-            path.lineWidth = 2.2
-            path.lineCapStyle = .round
-            path.lineJoinStyle = .round
-            path.stroke()
-            return true
-        }
-        image.isTemplate = false
-        return image
-    }
-
-    static func statusImage() -> NSImage {
-        let image = NSImage(size: NSSize(width: 20, height: 20), flipped: false) { rect in
-            let mark = NSAttributedString(string: "t.", attributes: [
-                .font: NSFont.systemFont(ofSize: 17, weight: .bold),
-                .foregroundColor: NSColor.black,
-                .kern: -0.8
-            ])
-            let size = mark.size()
-            mark.draw(at: NSPoint(x: (rect.width - size.width) / 2, y: (rect.height - size.height) / 2))
-            return true
-        }
-        image.isTemplate = true
-        return image
+        statusIcon?.acknowledgeCompletion()
     }
 
     func showPopoverForSnapshot() -> NSWindow? {
@@ -159,6 +116,8 @@ final class Indicators: NSObject {
 
     func reset() {
         popover.performClose(nil)
+        statusIcon?.stop()
+        statusIcon = nil
         if let item {
             NSStatusBar.system.removeStatusItem(item)
             self.item = nil
@@ -166,6 +125,9 @@ final class Indicators: NSObject {
     }
 
     var statusIconIsVisible: Bool { item?.button?.image != nil }
+    var statusIconIsTemplate: Bool { item?.button?.image?.isTemplate == true }
+    var statusButtonForSnapshot: NSStatusBarButton? { item?.button }
+    var popoverIsShown: Bool { popover.isShown }
 }
 
 

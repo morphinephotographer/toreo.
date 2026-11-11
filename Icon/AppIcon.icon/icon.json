@@ -33,15 +33,15 @@
           ]
         },
         {
-          "name": "torrent pieces",
+          "name": "three waves",
           "glass": false,
           "image-name-specializations": [
             {
-              "value": "pieces.svg"
+              "value": "wave.svg"
             },
             {
               "appearance": "dark",
-              "value": "pieces-dark.svg"
+              "value": "wave-dark.svg"
             }
           ]
         }

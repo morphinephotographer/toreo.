@@ -38,6 +38,7 @@ if [[ -z "${TOREO_COMPILED_ICON_DIR:-}" ]]; then
     --output-partial-info-plist "$icon_dir/partial.plist" --output-format human-readable-text --errors --warnings
 fi
 cp "$icon_dir/Assets.car" "$icon_dir/AppIcon.icns" "$app/Contents/Resources/"
+bash "$root/tools/compile-dock-alternate.sh" "$app/Contents/Resources"
 macro_flags=()
 if [[ "${RILL_DISABLE_MACRO_SANDBOX:-0}" == 1 ]]; then
   macro_flags=(-Xfrontend -disable-sandbox)

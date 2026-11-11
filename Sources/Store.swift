@@ -31,6 +31,7 @@ final class Store {
             updateIndicators()
         }
     }
+    private(set) var dockIcon = DockIcon.saved
     var importFolder = UserDefaults.standard.string(forKey: "AutoImportFolder") ?? Store.defaultImportFolder
     var unavailableFiles: Set<String> = []
     var autoImportError: String?
@@ -56,6 +57,21 @@ final class Store {
         let languages = AppLanguage.allCases
         guard let index = languages.firstIndex(of: language) else { return }
         language = languages[(index + 1) % languages.count]
+    }
+
+    func cycleDockIcon() {
+        let icons = DockIcon.allCases
+        guard let index = icons.firstIndex(of: dockIcon) else { return }
+        setDockIcon(icons[(index + 1) % icons.count])
+    }
+
+    func setDockIcon(_ icon: DockIcon) {
+        guard icon.apply() else {
+            message = tr("Не удалось изменить иконку Dock.")
+            return
+        }
+        dockIcon = icon
+        UserDefaults.standard.set(icon.rawValue, forKey: DockIcon.preferenceKey)
     }
 
     func dismissTransientOptions() {

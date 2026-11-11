@@ -178,16 +178,8 @@ struct PreferencesPanel: View {
             VStack(spacing: 4) {
                 folderRow(tr("Папка загрузки"), path: store.preferences.downloadDir, select: store.setDownloadFolder)
                 folderRow(tr("Автоимпорт .torrent"), path: store.importFolder, select: store.setImportFolder)
-                HStack(spacing: 8) {
-                    MenuCircle(tr("Языки"), symbol: "globe") {
-                        store.cycleLanguage()
-                    }
-                    Text(store.language.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .transferCard()
-
+                choiceRow("Языки", value: store.language.title, symbol: "globe", action: store.cycleLanguage)
+                choiceRow("Иконка Dock", value: store.dockIcon.title, symbol: "dock.rectangle", action: store.cycleDockIcon)
             }
 
             if let message = store.message ?? store.autoImportError {
@@ -207,6 +199,17 @@ struct PreferencesPanel: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private func choiceRow(_ title: String, value: String, symbol: String, action: @escaping () -> Void) -> some View {
+        HStack(spacing: MenuGrid.gutter) {
+            MenuCircle(title, symbol: symbol, action: action)
+                .accessibilityValue(value)
+            Text(value)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .transferCard()
     }
 
     private func folderRow(_ title: String, path: String, select: @escaping (String) -> Void) -> some View {

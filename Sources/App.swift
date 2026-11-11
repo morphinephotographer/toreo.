@@ -18,6 +18,13 @@ final class ToreoDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let store = Store.shared
+        if let target = ProcessInfo.processInfo.environment["RILL_STATUS_SNAPSHOT_DIR"] {
+            Task {
+                do { try await Snapshot.checkStatusIcon(to: URL(fileURLWithPath: target)); exit(0) }
+                catch { fputs("\(error)\n", stderr); exit(1) }
+            }
+            return
+        }
         if let target = ProcessInfo.processInfo.environment["RILL_SNAPSHOT_DIR"] {
             Task { @MainActor in
                 do { try await Snapshot.write(to: URL(fileURLWithPath: target, isDirectory: true)); exit(0) }
@@ -25,6 +32,7 @@ final class ToreoDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        _ = store.dockIcon.apply()
         store.indicators = Indicators(store: store)
         store.updateIndicators()
         store.start()
