@@ -1,0 +1,124 @@
+import Foundation
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case en, ru, uk
+    var id: String { rawValue }
+    var locale: Locale { Locale(identifier: rawValue) }
+    var title: String {
+        switch self {
+        case .en: "English"
+        case .ru: "Русский"
+        case .uk: "Українська"
+        }
+    }
+    static var current: Self {
+        Self(rawValue: UserDefaults.standard.string(forKey: "AppLanguage") ?? "") ?? .ru
+    }
+}
+
+func tr(_ key: String, language: AppLanguage = .current) -> String {
+    guard language != .ru, let translated = translations[key] else { return key }
+    return translated[language == .en ? 0 : 1]
+}
+
+private let translations: [String: [String]] = [
+    "Настройки": ["settings.", "Налаштування"],
+    "Языки": ["Languages", "Мови"],
+    "Язык": ["Language", "Мова"],
+    "Назад": ["Back", "Назад"],
+    "Папка загрузки": ["Download folder", "Папка завантажень"],
+    "Автоимпорт .torrent": ["Auto-import .torrent", "Автоімпорт .torrent"],
+    "Выбрать папку": ["Choose folder", "Вибрати папку"],
+    "Выбрать": ["Choose", "Вибрати"],
+    "Выбрать…": ["Choose…", "Вибрати…"],
+    "Поиск": ["Search", "Пошук"],
+    "Добавить торрент": ["Add torrent", "Додати торент"],
+    "Торрент-файл": ["Torrent file", "Торент-файл"],
+    "Magnet-ссылка": ["Magnet link", "Magnet-посилання"],
+    "Добавить magnet": ["Add magnet", "Додати magnet"],
+    "Закрыть": ["Close", "Закрити"],
+    "Закрыть сообщение": ["Dismiss message", "Закрити повідомлення"],
+    "Выйти из toreo.": ["Quit toreo.", "Вийти з toreo."],
+    "Нет передач": ["No transfers", "Немає передач"],
+    "Нет совпадений": ["No matches", "Немає збігів"],
+    "Открываем передачи…": ["Opening transfers…", "Відкриваємо передачі…"],
+    "Открыть папку загрузки": ["Open download folder", "Відкрити папку завантажень"],
+    "Показать в Finder": ["Show in Finder", "Показати у Finder"],
+    "Показать файлы": ["Show files", "Показати файли"],
+    "Показать подробности передачи": ["Show transfer details", "Показати подробиці передачі"],
+    "Открыть скачанные файлы": ["Open downloaded files", "Відкрити завантажені файли"],
+    "Приостановить": ["Pause", "Призупинити"],
+    "Продолжить": ["Resume", "Продовжити"],
+    "Приостановить все загрузки": ["Pause all downloads", "Призупинити всі завантаження"],
+    "Продолжить все загрузки": ["Resume all downloads", "Продовжити всі завантаження"],
+    "Приостановить раздачу": ["Pause seeding", "Призупинити роздачу"],
+    "Продолжить раздачу": ["Resume seeding", "Продовжити роздачу"],
+    "Удаление торрента": ["Remove torrent", "Видалення торента"],
+    "Удалить торрент": ["Remove torrent", "Видалити торент"],
+    "Удалить торрент…": ["Remove torrent…", "Видалити торент…"],
+    "Удалить с файлами": ["Remove with files", "Видалити з файлами"],
+    "Убрать торрент из списка и сохранить скачанные файлы": ["Remove the torrent and keep downloaded files", "Прибрати торент зі списку та зберегти завантажені файли"],
+    "Переместить скачанные данные в Корзину macOS": ["Move downloaded data to macOS Trash", "Перемістити завантажені дані до Смітника macOS"],
+    "Проблема с передачей": ["Transfer problem", "Проблема з передачею"],
+    "Ошибка": ["Error", "Помилка"],
+    "Ошибка передачи": ["Transfer error", "Помилка передачі"],
+    "Скачанный файл недоступен": ["Downloaded file unavailable", "Завантажений файл недоступний"],
+    "Повторить": ["Retry", "Повторити"],
+    "Проверить файл": ["Verify file", "Перевірити файл"],
+    "Проверить файлы": ["Verify files", "Перевірити файли"],
+    "Подробнее": ["Details", "Докладніше"],
+    "Раздача": ["Seeding", "Роздача"],
+    "Загрузка завершена": ["Download complete", "Завантаження завершено"],
+    "Завершено": ["Complete", "Завершено"],
+    "Приостановлено": ["Paused", "Призупинено"],
+    "Пауза": ["Paused", "Пауза"],
+    "Ожидает проверки": ["Waiting to verify", "Очікує перевірки"],
+    "Проверка": ["Verifying", "Перевірка"],
+    "В очереди": ["Queued", "У черзі"],
+    "Скачивание": ["Downloading", "Завантаження"],
+    "Получаем список файлов": ["Fetching file list", "Отримуємо список файлів"],
+    "Ожидание": ["Waiting", "Очікування"],
+    "Файлы": ["Files", "Файли"],
+    "Выберите передачу": ["Select a transfer", "Виберіть передачу"],
+    "Список появится после получения метаданных.": ["The list will appear after metadata is received.", "Список з’явиться після отримання метаданих."],
+    "Добавить передачу": ["Add transfer", "Додати передачу"],
+    "Добавить раздачу": ["Add torrent", "Додати торент"],
+    "Список файлов появится, когда magnet получит метаданные.": ["The file list will appear when magnet metadata arrives.", "Список файлів з’явиться після отримання метаданих magnet."],
+    "Начать сразу": ["Start immediately", "Почати одразу"],
+    "Отмена": ["Cancel", "Скасувати"],
+    "Добавить": ["Add", "Додати"],
+    "Не удалось открыть скачанный файл.": ["Could not open the downloaded file.", "Не вдалося відкрити завантажений файл."],
+    "Не удалось открыть папку загрузки.": ["Could not open the download folder.", "Не вдалося відкрити папку завантажень."],
+    "Папка загрузки недоступна.": ["The download folder is unavailable.", "Папка завантажень недоступна."],
+    "Передача ещё не завершена.": ["The transfer is not complete yet.", "Передачу ще не завершено."],
+    "Скачанные файлы не найдены.": ["Downloaded files were not found.", "Завантажені файли не знайдено."],
+    "Выберите папку, в которую можно записывать файлы.": ["Choose a writable folder.", "Виберіть папку з доступом для запису."],
+    "Выберите файл .torrent или magnet-ссылку.": ["Choose a .torrent file or magnet link.", "Виберіть файл .torrent або magnet-посилання."],
+    "Размер файла .torrent должен быть меньше 32 МБ.": ["The .torrent file must be smaller than 32 MB.", "Файл .torrent має бути меншим за 32 МБ."],
+    "Не удалось прочитать файл .torrent.": ["Could not read the .torrent file.", "Не вдалося прочитати файл .torrent."],
+    "Не удалось прочитать метаданные.": ["Could not read metadata.", "Не вдалося прочитати метадані."],
+    "Этот файл использует только BitTorrent v2.": ["This file uses BitTorrent v2 only.", "Цей файл використовує лише BitTorrent v2."],
+    "Файл .torrent повреждён или имеет неподдерживаемый формат.": ["The .torrent file is damaged or unsupported.", "Файл .torrent пошкоджений або має непідтримуваний формат."],
+    "Нужна magnet-ссылка с идентификатором BitTorrent v1 (btih).": ["A magnet link with a BitTorrent v1 (btih) identifier is required.", "Потрібне magnet-посилання з ідентифікатором BitTorrent v1 (btih)."],
+    "Движок не вернул добавленную передачу.": ["The engine did not return the added transfer.", "Рушій не повернув додану передачу."],
+    "Список файлов этой передачи недоступен.": ["The file list for this transfer is unavailable.", "Список файлів цієї передачі недоступний."],
+    "Сначала приостановите передачу.": ["Pause the transfer first.", "Спочатку призупиніть передачу."],
+    "Не удалось определить расположение файлов.": ["Could not locate the files.", "Не вдалося визначити розташування файлів."],
+    "Сессия передач недоступна.": ["The transfer session is unavailable.", "Сесія передач недоступна."],
+    "Движок не ответил вовремя.": ["The engine timed out.", "Рушій не відповів вчасно."],
+    "Движок вернул пустой ответ.": ["The engine returned an empty response.", "Рушій повернув порожню відповідь."],
+    "Не удалось открыть сессию. Проверьте доступ к папке данных toreo. и закройте другие экземпляры приложения.": ["Could not open the session. Check access to toreo.’s data folder and close other instances.", "Не вдалося відкрити сесію. Перевірте доступ до папки даних toreo. та закрийте інші екземпляри."],
+    "из": ["of", "із"],
+    "КБ": ["KB", "КБ"],
+    "МБ": ["MB", "МБ"],
+    "с": ["s", "с"],
+    "toreo. · Передачи": ["toreo. · Transfers", "toreo. · Передачі"],
+    "Передачи toreo.": ["toreo. transfers", "Передачі toreo."],
+    "Скачано": ["Downloaded", "Завантажено"],
+    "Автоимпорт недоступен": ["Auto-import unavailable", "Автоімпорт недоступний"],
+    "Не удалось импортировать": ["Could not import", "Не вдалося імпортувати"],
+    "Не удалось переместить": ["Could not move", "Не вдалося перемістити"],
+    "в Корзину. Перемещено файлов": ["to Trash. Files moved", "до Смітника. Переміщено файлів"],
+    "Передача на паузе.": ["The transfer is paused.", "Передача на паузі."],
+    "Файл принадлежит другой передаче или находится за пределами папки загрузки": ["The file belongs to another transfer or is outside the download folder", "Файл належить іншій передачі або розташований за межами папки завантажень"],
+]
