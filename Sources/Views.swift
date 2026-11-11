@@ -117,7 +117,7 @@ private struct TransferFileRow: View {
     var body: some View {
         HStack(spacing: MenuGrid.gutter) {
             MenuCircle(file.name, symbol: isSelected ? "checkmark" : "minus",
-                       color: isSelected ? .primary : .secondary, action: toggle)
+                       color: isSelected ? .primary : .secondary, localized: false, action: toggle)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             TransferRowText(title: file.name, detail: bytes(file.length))
         }
@@ -205,9 +205,8 @@ struct PreferencesPanel: View {
         HStack(spacing: MenuGrid.gutter) {
             MenuCircle(title, symbol: symbol, action: action)
                 .accessibilityValue(value)
-            Text(value)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // Same layout as the folder rows: what the setting is, then its value.
+            TransferRowText(title: tr(title), detail: value)
         }
         .transferCard()
     }

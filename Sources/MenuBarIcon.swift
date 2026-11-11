@@ -51,22 +51,33 @@ final class MenuBarIcon: NSObject {
     func update(transfers: [Transfer]) {
         let now = ProcessInfo.processInfo.systemUptime
         let wasDownloading = downloadStartedAt != nil
-        let isDownloading = transfers.contains { $0.downloading && $0.error == 0 }
+        // Tracker warnings and errors (codes 1 and 2) do not stop a transfer, only local errors do.
+        let isDownloading = transfers.contains { $0.downloading && !$0.hasLocalError }
         let wasCompleting = completionPending
         let previousWave = waveMotion(at: now)
-        let failed = Set(transfers.lazy.filter { $0.error != 0 }.map(\.hashString))
+        let present = Set(transfers.map(\.hashString))
+        let failed = Set(transfers.lazy.filter(\.hasLocalError).map(\.hashString))
+        let dropped = { (hash: String) in failed.contains(hash) || !present.contains(hash) }
 
-        pending.removeAll { failed.contains($0) }
-        for transfer in transfers where transfer.complete && transfer.error == 0 {
-            if previousCompletion[transfer.hashString] == false {
-                pending.append(transfer.hashString)
+        pending.removeAll(where: dropped)
+        for transfer in transfers where transfer.complete && !transfer.hasLocalError && !transfer.verifying {
+            let hash = transfer.hashString
+            if previousCompletion[hash] == false, !pending.contains(hash), completion?.hash != hash {
+                pending.append(hash)
             }
         }
-        previousCompletion = Dictionary(transfers.map { ($0.hashString, $0.complete) },
-                                        uniquingKeysWith: { _, latest in latest })
+        // A recheck can briefly lower the progress of a finished transfer.
+        // Keep the state from before the recheck so it does not look like a new completion.
+        var completionState: [String: Bool] = [:]
+        for transfer in transfers {
+            let hash = transfer.hashString
+            completionState[hash] = transfer.verifying
+                ? (previousCompletion[hash] ?? transfer.complete) : transfer.complete
+        }
+        previousCompletion = completionState
 
         if isDownloading != wasDownloading { downloadStartedAt = isDownloading ? now : nil }
-        let failedCompletion = completion.map { failed.contains($0.hash) } == true
+        let failedCompletion = completion.map { dropped($0.hash) } == true
         if failedCompletion { completion = nil }
         if completion == nil { beginNextCompletion(at: now, waveMotion: previousWave) }
         updateAccessibility()
@@ -77,10 +88,10 @@ final class MenuBarIcon: NSObject {
         }
     }
 
+    /// Opening the panel shows every finished transfer, so one click acknowledges the whole queue.
     func acknowledgeCompletion() {
-        let now = ProcessInfo.processInfo.systemUptime
+        pending.removeAll()
         completion = nil
-        beginNextCompletion(at: now, waveMotion: waveMotion(at: now))
         updateAccessibility()
         restartAnimation()
     }

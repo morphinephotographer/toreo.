@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class Indicators: NSObject {
+final class Indicators: NSObject, NSPopoverDelegate {
     private var item: NSStatusItem?
     private let popover = NSPopover()
     private var statusIcon: MenuBarIcon?
+    private var lastClose: TimeInterval = 0
     var completionPending: Bool { statusIcon?.completionPending == true }
     private let completionSound: @MainActor () -> Void
 
@@ -13,6 +14,7 @@ final class Indicators: NSObject {
         self.completionSound = completionSound
         super.init()
         popover.behavior = .transient
+        popover.delegate = self
         let controller = NSHostingController(rootView: LocalizedPanel(store: store, dismiss: { [weak self] in
             self?.popover.performClose(nil)
         }, contentSizeChanged: { [weak self] size in
@@ -42,15 +44,20 @@ final class Indicators: NSObject {
     }
 
     @objc private func togglePopover() {
-        _ = NSRunningApplication.current.activate(options: [])
-        if completionPending {
-            acknowledgeCompletion()
-            showPanel()
-        } else if popover.isShown {
+        if completionPending { acknowledgeCompletion() }
+        if popover.isShown {
             popover.performClose(nil)
+        } else if ProcessInfo.processInfo.systemUptime - lastClose < 0.3 {
+            // A transient popover closes on mouse down outside it, before this mouse-up action.
+            // A click on the icon that just closed the panel must not open it again.
+            return
         } else {
             showPanel()
         }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        lastClose = ProcessInfo.processInfo.systemUptime
     }
 
     func showPanel() {

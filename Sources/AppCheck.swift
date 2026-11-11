@@ -121,7 +121,13 @@ enum AppCheck {
         }
         guard ProblemAction.resolve(code: 2, message: "Tracker timeout", missingFile: false) == .retry,
               ProblemAction.resolve(code: 3, message: "Permission denied", missingFile: false) == .chooseFolder,
-              ProblemAction.resolve(code: 0, message: "", missingFile: true) == .verify else {
+              ProblemAction.resolve(code: 0, message: "", missingFile: true) == .verify,
+              AppLanguage.allCases.allSatisfy({
+                  ProblemAction.resolve(code: 0, message: tr("Скачанный файл недоступен", language: $0),
+                                        missingFile: true) == .verify
+              }),
+              ProblemAction.resolve(code: 3, message: "No data found! Ensure your drives are connected or use \"Set Location\".",
+                                    missingFile: false) == .chooseFolder else {
             throw RillError("Действие при ошибке выбрано неверно.")
         }
         print("PASS recursive file search and contextual recovery actions")
@@ -131,16 +137,37 @@ enum AppCheck {
         }
         try await store.engine.setDownloadFolder(source.path)
 
-        let watch = source.appending(path: "watch", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: watch, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: torrent, to: watch.appending(path: "incoming.torrent"))
         try await store.engine.change(hash, command: "torrent_remove")
         guard FileManager.default.fileExists(atPath: payload.path) else {
             throw RillError("Удаление записи затронуло скачанный файл.")
         }
+
+        // A folder seen for the first time only records the files already in it.
+        let old = source.appending(path: "old", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        var existing = Data("d4:infod6:lengthi3e4:name12:baseline.bin12:piece lengthi16384e6:pieces20:".utf8)
+        existing.append(Data(repeating: 7, count: 20))
+        existing.append(Data("ee".utf8))
+        try existing.write(to: old.appending(path: "existing.torrent"))
+        let baseline = await store.engine.importTorrents(from: old.path, to: source.path)
+        guard !baseline.imported, baseline.error == nil, try await store.engine.list().isEmpty else {
+            throw RillError(baseline.error ?? "Первый просмотр папки импортировал уже лежавшие файлы.")
+        }
+
+        let watch = source.appending(path: "watch", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: watch, withIntermediateDirectories: true)
+        _ = await store.engine.importTorrents(from: watch.path, to: source.path)
+        try Data("broken".utf8).write(to: watch.appending(path: "broken.torrent"))
+        let broken = await store.engine.importTorrents(from: watch.path, to: source.path)
+        let brokenAgain = await store.engine.importTorrents(from: watch.path, to: source.path)
+        guard broken.error != nil, brokenAgain.error == nil else {
+            throw RillError("Ошибка повреждённого файла не показана или повторяется.")
+        }
+        try FileManager.default.removeItem(at: watch.appending(path: "broken.torrent"))
+        try FileManager.default.copyItem(at: torrent, to: watch.appending(path: "incoming.torrent"))
         let scan = await store.engine.importTorrents(from: watch.path, to: source.path)
-        guard scan.imported, scan.error == nil, try await store.engine.list().count == 1 else {
-            throw RillError(scan.error ?? "Автоимпорт не добавил торрент.")
+        guard scan.imported, try await store.engine.list().count == 1 else {
+            throw RillError(scan.error ?? "Автоимпорт не добавил новый торрент.")
         }
         try await store.engine.change(hash, command: "torrent_remove")
         await store.close()
@@ -151,7 +178,7 @@ enum AppCheck {
             throw RillError("Автоимпорт повторно добавил удалённый торрент.")
         }
         await reopened.close()
-        print("PASS auto-import watches the selected folder and remembers imported torrents after restart")
+        print("PASS auto-import skips files already in a new folder, reports a broken file once, imports new files and remembers them after restart")
 
         let sample = Transfer(
             id: 1, name: "Indicator check", hashString: "sample", downloadDir: "/tmp", errorString: "",
@@ -192,6 +219,9 @@ enum AppCheck {
     }
 
     static func checkQuit(torrent: URL) async throws {
+        guard ProcessInfo.processInfo.environment["RILL_STORE"] != nil else {
+            throw RillError("Для проверки нужен отдельный RILL_STORE.")
+        }
         let store = Store.shared
         for _ in 0..<80 where !store.ready {
             try await Task.sleep(for: .milliseconds(100))

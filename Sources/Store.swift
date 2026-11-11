@@ -28,6 +28,7 @@ final class Store {
     var language = AppLanguage.current {
         didSet {
             UserDefaults.standard.set(language.rawValue, forKey: "AppLanguage")
+            if NSApp.mainMenu != nil { ToreoDelegate.installMainMenu() }
             updateIndicators()
         }
     }
@@ -163,7 +164,8 @@ final class Store {
                 let source = store.importFolder
                 let result = await store.engine.importTorrents(from: source, to: store.preferences.downloadDir)
                 if !Task.isCancelled, !store.closing, store.importFolder == source {
-                    store.autoImportError = result.error
+                    // Keep a dismissed message hidden until a new problem appears.
+                    if let error = result.error { store.autoImportError = error }
                     if result.imported { await store.refresh() }
                 }
                 try? await Task.sleep(for: .seconds(5), tolerance: .milliseconds(10))
@@ -182,6 +184,28 @@ final class Store {
             guard let self else { return }
             self.indicators?.showPanel()
             if result == .OK { self.enqueue(panel.urls) }
+        }
+    }
+
+    /// ⌥ + «Торрент-файл»: choose the folder and files before the download starts.
+    func chooseFileWithOptions() {
+        let panel = NSOpenPanel()
+        panel.title = tr("Добавить раздачу")
+        panel.allowedContentTypes = [UTType(filenameExtension: "torrent") ?? .data]
+        panel.allowsMultipleSelection = false
+        panel.begin { [weak self] result in
+            guard let self else { return }
+            self.indicators?.showPanel()
+            guard result == .OK, let url = panel.url else { return }
+            Task {
+                do {
+                    let draft = try await self.engine.inspect(url, folder: self.preferences.downloadDir)
+                    self.message = nil
+                    self.draft = draft
+                } catch {
+                    self.message = error.localizedDescription
+                }
+            }
         }
     }
 

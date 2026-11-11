@@ -72,11 +72,48 @@ enum Snapshot {
         guard (button.image === resumedWave) == reducedMotion else {
             throw RillError("The wave did not return to the correct state.")
         }
+
+        // A tracker warning (error 1) does not stop the wave or hide the completion check.
+        store.transfers = [transfer(5, error: 1)]
+        indicators.update(from: store)
+        try await Task.sleep(for: .milliseconds(120))
+        let warningWave = button.image
+        try await Task.sleep(for: .milliseconds(120))
+        guard (button.image === warningWave) == reducedMotion else {
+            throw RillError("A tracker warning stopped the wave.")
+        }
+        store.transfers = [transfer(5, complete: true, error: 1)]
+        indicators.update(from: store)
+        guard indicators.completionPending, completionCount == 3 else {
+            throw RillError("A tracker warning hid the completion check.")
+        }
+        indicators.acknowledgeCompletion()
+
+        // One acknowledgement clears every queued completion.
+        store.transfers = [transfer(6), transfer(7)]
+        indicators.update(from: store)
+        store.transfers = [transfer(6, complete: true), transfer(7, complete: true)]
+        indicators.update(from: store)
+        guard indicators.completionPending, completionCount == 4 else {
+            throw RillError("Two completions did not start the queue.")
+        }
+        indicators.acknowledgeCompletion()
+        try await Task.sleep(for: .seconds(3))
+        guard !indicators.completionPending, completionCount == 4 else {
+            throw RillError("Acknowledgement did not clear the whole completion queue.")
+        }
+        print("PASS tracker warnings keep the wave and the check; one acknowledgement clears the queue")
+
         store.transfers = []
         indicators.update(from: store)
         try await captureStatusButton(button, name: "08-idle-again", to: directory)
         button.performClick(nil)
         guard indicators.popoverIsShown else { throw RillError("The status item did not open the popover.") }
+        button.performClick(nil)
+        try await Task.sleep(for: .milliseconds(400))
+        guard !indicators.popoverIsShown else { throw RillError("A second click did not close the popover.") }
+        button.performClick(nil)
+        guard indicators.popoverIsShown else { throw RillError("The status item did not reopen the popover.") }
         button.performClick(nil)
         print("PASS native status item, completion queue, errors, resume, idle and menu action (Reduce Motion: \(reducedMotion))")
     }

@@ -40,7 +40,6 @@ void* rill_open(char const* folder, char const* options)
         if (!map)
             return nullptr;
         put(*map, "rpc_enabled", false);
-        put(*map, "port_forwarding_enabled", false);
         put(*map, "queue_stalled_enabled", false);
         auto* session = tr_sessionInit(folder, true, defaults);
         if (!session || !session->mayWriteConfigDir())
