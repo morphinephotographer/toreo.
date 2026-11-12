@@ -197,6 +197,14 @@ enum Snapshot {
             }
             try await captureState(window, name: "menu-empty-\(name)", to: directory)
             try indicators.checkPanelPlacement()
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                try click(in: window, at: NSPoint(x: 44, y: 36), fromTop: true)
+                try await Task.sleep(for: .milliseconds(140))
+                try captureWindow(window, name: "logo-bounce-\(name)", to: directory)
+                try await Task.sleep(for: .seconds(1))
+                try captureWindow(window, name: "logo-rest-\(name)", to: directory)
+                try indicators.checkPanelPlacement()
+            }
             var heights: [CGFloat] = []
             for count in [0, 1, 2, 3, 8, 1, 0] {
                 store.transfers = Array(samples.prefix(count))
@@ -319,7 +327,7 @@ enum Snapshot {
         try click(in: window, at: nil)
     }
 
-    static func click(in window: NSWindow, at location: NSPoint?) throws {
+    static func click(in window: NSWindow, at location: NSPoint?, fromTop: Bool = false) throws {
         func hostingView(in view: NSView) -> NSView? {
             if String(describing: type(of: view)).contains("NSHostingView") { return view }
             return view.subviews.lazy.compactMap { hostingView(in: $0) }.first
@@ -328,7 +336,7 @@ enum Snapshot {
             throw RillError("Не найдена поверхность панели.")
         }
         var local = location ?? NSPoint(x: 6, y: host.bounds.midY)
-        if location != nil, host.isFlipped { local.y = host.bounds.height - local.y }
+        if location != nil, host.isFlipped != fromTop { local.y = host.bounds.height - local.y }
         let point = host.convert(local, to: nil)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],

@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 
 struct MenuPanel: View {
@@ -169,7 +170,7 @@ struct MenuPanel: View {
     }
 
     private var header: some View {
-        PanelHeader("toreo.") {
+        PanelHeader(title: { ToreoWordmark() }) {
             let pause = canPause
             MenuCircle(pause ? tr("Приостановить все загрузки") : tr("Продолжить все загрузки"),
                        symbol: pause ? "pause.fill" : "play.fill") {
@@ -466,6 +467,7 @@ private struct MenuTransferRow: View {
 enum MenuGrid {
     static let gutter: CGFloat = 8
     static let control: CGFloat = 40
+    static let titleSize: CGFloat = 24
     static let choiceWidth: CGFloat = 112
     static let choiceAnimation = Animation.easeInOut(duration: 0.2)
 }
@@ -574,23 +576,110 @@ enum ProblemAction {
     }
 }
 
-struct PanelHeader<Controls: View>: View {
-    let title: String
+struct PanelHeader<Title: View, Controls: View>: View {
+    let title: Title
     @ViewBuilder var controls: () -> Controls
 
-    init(_ title: String, @ViewBuilder controls: @escaping () -> Controls) {
-        self.title = title
+    init(@ViewBuilder title: () -> Title, @ViewBuilder controls: @escaping () -> Controls) {
+        self.title = title()
         self.controls = controls
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(tr(title)).font(.system(size: 24, weight: .bold))
+            title.font(.system(size: MenuGrid.titleSize, weight: .bold))
             Spacer(minLength: 8)
             controls()
         }
         .frame(height: MenuGrid.control)
         .padding(.trailing, MenuGrid.gutter)
+    }
+}
+
+extension PanelHeader where Title == Text {
+    init(_ title: String, @ViewBuilder controls: @escaping () -> Controls) {
+        self.init(title: { Text(tr(title)) }, controls: controls)
+    }
+}
+
+private struct ToreoWordmark: View {
+    private struct DotPose {
+        var towardO: CGFloat = 0
+        var lift: CGFloat = 0
+        var squash: CGFloat = 1
+    }
+
+    private static let dotTravel: CGSize = {
+        let font = NSFont.systemFont(ofSize: MenuGrid.titleSize, weight: .bold)
+        let letter = NSAttributedString(string: "o", attributes: [.font: font])
+        let period = NSAttributedString(string: ".", attributes: [.font: font])
+        let oInk = CTLineGetImageBounds(CTLineCreateWithAttributedString(letter), nil)
+        let dotInk = CTLineGetImageBounds(CTLineCreateWithAttributedString(period), nil)
+        return CGSize(width: oInk.midX - letter.size().width - dotInk.midX, height: oInk.maxY)
+    }()
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var bounce = 0
+
+    var body: some View {
+        let travel = Self.dotTravel
+        if reduceMotion {
+            Text("toreo.")
+        } else {
+            Button {
+                bounce += 1
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text("toreo")
+                    Text(".")
+                        .keyframeAnimator(initialValue: DotPose(), trigger: bounce) { dot, pose in
+                            dot.scaleEffect(x: pose.squash, y: 1 / pose.squash, anchor: .bottom)
+                                .offset(x: pose.towardO * travel.width, y: -pose.lift) // grid: ok animation only
+                        } keyframes: { _ in
+                            // Teleo's one-second trajectory: hop onto the o, return, and bounce once.
+                            KeyframeTrack(\.towardO) {
+                                MoveKeyframe(0)
+                                LinearKeyframe(0, duration: 0.06)
+                                LinearKeyframe(1, duration: 0.21)
+                                LinearKeyframe(1, duration: 0.20)
+                                LinearKeyframe(0, duration: 0.31)
+                                LinearKeyframe(0, duration: 0.22)
+                            }
+                            KeyframeTrack(\.lift) {
+                                MoveKeyframe(0)
+                                LinearKeyframe(0, duration: 0.06)
+                                CubicKeyframe(travel.height + 0.22 * MenuGrid.titleSize, duration: 0.11, endVelocity: 0)
+                                CubicKeyframe(travel.height, duration: 0.10, startVelocity: 0, endVelocity: 0)
+                                LinearKeyframe(travel.height, duration: 0.20)
+                                CubicKeyframe(travel.height + 0.42 * MenuGrid.titleSize, duration: 0.15, endVelocity: 0)
+                                CubicKeyframe(0, duration: 0.16, startVelocity: 0, endVelocity: 0)
+                                CubicKeyframe(0.12 * MenuGrid.titleSize, duration: 0.09, endVelocity: 0)
+                                CubicKeyframe(0, duration: 0.07, startVelocity: 0, endVelocity: 0)
+                                LinearKeyframe(0, duration: 0.06)
+                            }
+                            KeyframeTrack(\.squash) {
+                                MoveKeyframe(1)
+                                CubicKeyframe(1.2, duration: 0.06)
+                                CubicKeyframe(0.92, duration: 0.06)
+                                CubicKeyframe(1, duration: 0.15)
+                                CubicKeyframe(1.15, duration: 0.12)
+                                CubicKeyframe(0.9, duration: 0.08)
+                                CubicKeyframe(1, duration: 0.09)
+                                LinearKeyframe(1, duration: 0.20)
+                                CubicKeyframe(1.25, duration: 0.02)
+                                CubicKeyframe(1, duration: 0.06)
+                                LinearKeyframe(1, duration: 0.08)
+                                CubicKeyframe(1.1, duration: 0.02)
+                                CubicKeyframe(1, duration: 0.06)
+                            }
+                        }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("toreo.")
+            .help(tr("Анимировать логотип"))
+        }
     }
 }
 
