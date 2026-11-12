@@ -203,6 +203,10 @@ enum Snapshot {
                 try captureWindow(window, name: "logo-bounce-\(name)", to: directory)
                 try await Task.sleep(for: .seconds(1))
                 try captureWindow(window, name: "logo-rest-\(name)", to: directory)
+                try click(in: window, at: NSPoint(x: 44, y: 36), fromTop: true)
+                try await Task.sleep(for: .milliseconds(325))
+                try captureWindow(window, name: "logo-bend-\(name)", to: directory)
+                try await Task.sleep(for: .milliseconds(700))
                 try indicators.checkPanelPlacement()
             }
             var heights: [CGFloat] = []
