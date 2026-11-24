@@ -66,7 +66,8 @@ class Engine:
     def start(self):
         options = dict(peer_port=self.port, peer_port_random_on_start=False,
                        bind_address_ipv4=peer_address, bind_address_ipv6="::1",
-                       dht_enabled=False, pex_enabled=False, lpd_enabled=False, utp_enabled=False)
+                       dht_enabled=False, pex_enabled=False, lpd_enabled=False, utp_enabled=False,
+                       port_forwarding_enabled=False)
         self.handle = lib.rill_open(bytes(self.folder), json.dumps(options).encode())
         assert self.handle
 

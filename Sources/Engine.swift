@@ -13,6 +13,10 @@ struct Transfer: Decodable, Identifiable, Equatable, Sendable {
     var downloading: Bool { status == 4 && metadataPercentComplete >= 1 && sizeWhenDone > 0 && leftUntilDone > 0 }
     var complete: Bool { metadataPercentComplete >= 1 && percentDone >= 1 }
     var paused: Bool { status == 0 }
+    var verifying: Bool { status == 1 || status == 2 }
+    /// Transmission error 3: local data problem. Errors 1 and 2 come from trackers and do not stop the transfer.
+    var hasLocalError: Bool { error == 3 }
+    var hasTrackerIssue: Bool { error == 1 || error == 2 }
     var progress: Double { status == 2 ? recheckProgress : percentDone }
     var state: String {
         if error == 3 { return tr("Ошибка") }
@@ -74,7 +78,9 @@ actor Engine {
     private var folder: String?
 
     private var importFolder: String?
+    private var importDestination: String?
     private var importedFiles: Set<String>?
+    private var watchedFolders: Set<String> = []
     private var examinedFiles: [URL: ImportStamp] = [:]
 
     private struct ImportStamp: Equatable {
@@ -82,20 +88,38 @@ actor Engine {
         let modified: Date?
     }
 
+    /// Watches a folder for new .torrent files.
+    ///
+    /// The first scan of a folder only records the files already in it, so a first launch or a
+    /// new folder does not start every old download at once. Files that fail to import are
+    /// reported once and retried only after they change.
     func importTorrents(from source: String, to destination: String) -> (imported: Bool, error: String?) {
         guard let folder, handle != nil, !Task.isCancelled else { return (false, nil) }
-        let ledger = URL(fileURLWithPath: folder, isDirectory: true).appending(path: "auto-import.json")
+        let base = URL(fileURLWithPath: folder, isDirectory: true)
+        let ledger = base.appending(path: "auto-import.json")
+        let folderLedger = base.appending(path: "auto-import-folders.json")
         var imported = false
         var failed: [String] = []
         do {
             if importedFiles == nil {
-                importedFiles = FileManager.default.fileExists(atPath: ledger.path)
+                let ledgerExists = FileManager.default.fileExists(atPath: ledger.path)
+                importedFiles = ledgerExists
                     ? try JSONDecoder().decode(Set<String>.self, from: Data(contentsOf: ledger)) : []
+                if FileManager.default.fileExists(atPath: folderLedger.path) {
+                    watchedFolders = try JSONDecoder().decode(Set<String>.self, from: Data(contentsOf: folderLedger))
+                } else {
+                    // Sessions from 0.3.4 and earlier already imported from this folder.
+                    watchedFolders = ledgerExists ? [source] : []
+                    try JSONEncoder().encode(watchedFolders).write(to: folderLedger, options: .atomic)
+                }
             }
-            if importFolder != source {
+            if importFolder != source || importDestination != destination {
+                // A new destination may fix files that failed before, so look at them again.
                 importFolder = source
+                importDestination = destination
                 examinedFiles.removeAll()
             }
+            let baseline = !watchedFolders.contains(source)
             let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
             let directory = URL(fileURLWithPath: source, isDirectory: true)
             let entries = try FileManager.default.contentsOfDirectory(
@@ -110,22 +134,25 @@ actor Engine {
                       let size = values.fileSize, (1...32_000_000).contains(size) else { continue }
                 let stamp = ImportStamp(size: size, modified: values.contentModificationDate)
                 guard examinedFiles[url] != stamp else { continue }
+                // Remember the file even when it fails, so a broken file is not reported every 5 seconds.
+                examinedFiles[url] = stamp
                 do {
-                    let draft = try inspect(url, folder: destination)
-                    guard let data = draft.bytes else { continue }
+                    let data = try Data(contentsOf: url)
                     let digest = Data(SHA256.hash(data: data)).base64EncodedString()
-                    if importedFiles?.contains(digest) != true {
-                        _ = try add(draft)
-                        imported = true
-                        var updated = importedFiles ?? []
-                        updated.insert(digest)
-                        try JSONEncoder().encode(updated).write(to: ledger, options: .atomic)
-                        importedFiles = updated
-                    }
-                    examinedFiles[url] = stamp
+                    guard importedFiles?.contains(digest) != true else { continue }
+                    if !baseline { _ = try add(inspect(url, folder: destination)) }
+                    imported = imported || !baseline
+                    var updated = importedFiles ?? []
+                    updated.insert(digest)
+                    try JSONEncoder().encode(updated).write(to: ledger, options: .atomic)
+                    importedFiles = updated
                 } catch {
-                    failed.append(url.lastPathComponent)
+                    if !baseline { failed.append(url.lastPathComponent) }
                 }
+            }
+            if baseline, !Task.isCancelled {
+                watchedFolders.insert(source)
+                try JSONEncoder().encode(watchedFolders).write(to: folderLedger, options: .atomic)
             }
         } catch {
             return (imported, "\(tr("Автоимпорт недоступен")): \(error.localizedDescription)")
@@ -141,9 +168,11 @@ actor Engine {
         let location = env["RILL_STORE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? base.appending(path: "Rill/Engine", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: location, withIntermediateDirectories: true)
-        var options = "{}"
+        // Pick a random peer port once and keep it, so routers and firewalls see a stable port.
+        // Older sessions saved peer_port_random_on_start = true; this turns it off for them.
+        var options = #"{"peer_port_random_on_start":false}"#
         if !FileManager.default.fileExists(atPath: location.appending(path: "settings.json").path) {
-            options = #"{"peer_port_random_on_start":true}"#
+            options = #"{"peer_port_random_on_start":false,"peer_port":\#(Int.random(in: 49152...65535))}"#
         }
         guard let opened = rill_open(location.path, options) else {
             throw RillError(tr("Не удалось открыть сессию. Проверьте доступ к папке данных toreo. и закройте другие экземпляры приложения."))
@@ -341,7 +370,28 @@ actor Engine {
                 throw RillError("\(tr("Не удалось переместить")) «\(url.lastPathComponent)» \(tr("в Корзину. Перемещено файлов")): \(moved). \(tr("Передача на паузе."))")
             }
         }
+        trashEmptyFolders(of: targets, below: parent)
         try change(current.hashString, command: "torrent_remove")
+    }
+
+    /// Moves folders left empty by a multi-file transfer to the Trash, deepest first.
+    /// Folders that still hold anything other than .DS_Store stay in place.
+    private func trashEmptyFolders(of files: [URL], below parent: URL) {
+        let prefix = parent.path.hasSuffix("/") ? parent.path : parent.path + "/"
+        var folders: Set<String> = []
+        for file in files {
+            var folder = file.deletingLastPathComponent().standardizedFileURL
+            while folder.path.hasPrefix(prefix), folder.path != parent.path {
+                folders.insert(folder.path)
+                folder = folder.deletingLastPathComponent().standardizedFileURL
+            }
+        }
+        for path in folders.sorted(by: { $0.count > $1.count }) {
+            guard let items = try? FileManager.default.contentsOfDirectory(atPath: path),
+                  items.allSatisfy({ $0 == ".DS_Store" }) else { continue }
+            try? FileManager.default.trashItem(at: URL(fileURLWithPath: path, isDirectory: true),
+                                               resultingItemURL: nil)
+        }
     }
 
     private func existingPaths(_ id: Int) throws -> [String] {

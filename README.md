@@ -1,31 +1,62 @@
-# toreo. 0.3.4
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/icon-dark.png">
+    <img src="docs/images/icon-light.png" width="144" alt="toreo.">
+  </picture>
+</p>
 
-Личный торрент-клиент для Apple Silicon с macOS 26 или новее. Для запуска откройте toreo..app из Finder. Встроенная сессия Transmission не зависит от установленного приложения Transmission.
+<h1 align="center">toreo.</h1>
+<p align="center">A small torrent client. A little more Mac.</p>
+<p align="center">English · [Українська](README.uk.md) · [Русский](README.ru.md)</p>
 
-Круглый значок с волной диаметром 15 pt в строке меню открывает панель Liquid Glass шириной 384 pt. Передачи и автоимпорт продолжаются при закрытой панели.
+A native menu bar torrent client for Apple Silicon. Add a torrent or magnet link, follow your downloads, and open the finished files from one compact Liquid Glass panel.
 
-Во время загрузки волна движется, а после завершения на короткое время появляется зелёная галочка и звучит тихое уведомление. Кнопка выключения сохраняет сессию и завершает приложение.
+<p align="center">
+  <a href="https://github.com/morphinephotographer/toreo./releases/download/v0.3.5-build11/Toreo-0.3.5-build11-macOS-arm64.dmg"><strong>Download DMG</strong></a>
+  &nbsp; · &nbsp;
+  <a href="https://github.com/morphinephotographer/toreo./releases/download/v0.3.5-build11/Toreo-0.3.5-build11-macOS-arm64.zip"><strong>Download ZIP</strong></a>
+</p>
+<p align="center"><sub>Apple Silicon · macOS 26 or later · English, Українська, Русский</sub></p>
 
-- Поле внизу ищет по передачам и файлам .torrent в папке загрузок, включая вложенные папки. Если результатов больше трёх, список прокручивается.
-- Кнопка «+» превращает нижнюю область в выбор .torrent или magnet. Файл также можно перетащить прямо на панель. Справа находится кнопка выхода.
-- Нажатие на завершённую карточку даёт лёгкий визуальный отклик и показывает корзину вместо галочки. Зелёная галочка открывает скачанный файл или выделяет несколько файлов в Finder. Список файлов доступен в контекстном меню.
-- Команда удаления в контекстном меню раскрывает два действия в один ряд внутри карточки — удалить запись или переместить скачанные данные в Корзину macOS. Дополнительного подтверждения нет.
-- Панели добавления и удаления закрываются через пять секунд без выбора действия или по нажатию на свободное место.
-- Предупреждающий треугольник раскрывает причину ошибки и действие для её исправления внутри карточки.
-- Шестерёнка открывает настройки в той же панели. Папки сохраняются сразу после выбора, а кнопка «Назад» возвращает список.
-- Кнопка глобуса переключает язык по кругу между English, Русский и Українська. Выбор сохраняется и применяется сразу.
-- Кнопка под выбором языка переключает видимость и оформление значка Dock. Есть светлый, тёмный, два прозрачных, голубой и зелёный варианты с тремя волнами. Выбор сохраняется автоматически.
-- Toreo автоматически импортирует файлы .torrent из «Загрузок». Папку автоимпорта можно изменить в настройках. Исходные .torrent остаются в папке, а уже обработанные копии повторно не импортируются.
-- Ограничения скорости, очереди загрузок и раздач отключены.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/transfers-dark.png">
+  <img src="docs/images/transfers-light.png" width="420" alt="toreo.">
+</picture>
 
-Состояние хранится в `~/Library/Application Support/Rill/Engine`. Для чисто v2 раздач потребуется другой движок.
+## Made for your menu bar
 
-## Локальная пересборка
+- Two waves animate while downloading and become an equals sign when paused.
+- Switch to horizontal download and upload speeds in Settings.
+- Add .torrent files, magnet links, or drag a file onto the panel.
+- Choose blue and mint, dark, monochrome, and previous Dock icon styles.
+- Automatically import new torrent files and restore your transfers after restarting.
+- Search transfers and torrent files, choose individual files, and move downloads to the Trash.
 
-Нужны Xcode со Swift 6.2 или новее, CMake и Git. Запустите `./build.sh`. По умолчанию сборка размещается рядом с исходниками, зависимости — в `.build`. Сценарий загружает закреплённый Transmission 4.1.4 и подмодули. Через `TRANSMISSION_SOURCE` можно указать уже загруженную копию.
+## Install
 
-Проверка движка запускается командой `python3 tools/engine-check.py toreo..app/Contents/Frameworks/libRillEngine.dylib <локальный IPv4 этого Mac>`. Она использует временные папки и тестовый трекер на этом же компьютере. Лицензии Transmission приложены к сборке.
+1. Download the DMG and drag **toreo..app** to **Applications**, or unzip the ZIP and move the app there.
+2. Open the app and use its menu bar icon. Settings contains the language, Dock icon, and menu bar display options.
 
-Для продолжения работы в Codex начните с [паспорта проекта](TOREO-PROJECT.md).
+The download is ad-hoc signed and is not notarized by Apple. macOS may ask you to approve the app in System Settings → Privacy & Security.
 
-Для ревью в Claude используйте [карту исходников и сценарии проверки](docs/CLAUDE-REVIEW.md). Сборка для Mac и пакет анализа со снимками приложены к релизу на GitHub.
+## Build from source
+
+Requires Xcode with Swift 6.2 or later, CMake, Git, and an Apple Silicon Mac. The build script fetches pinned Transmission sources and submodules.
+
+```sh
+git clone https://github.com/morphinephotographer/toreo..git
+cd toreo.
+./build.sh
+```
+
+## Local by design
+
+Transfer state is stored locally in `~/Library/Application Support/Rill/Engine`. toreo. has no account or analytics service. BitTorrent connects directly to trackers and peers.
+
+## License
+
+Original toreo. code and artwork are MIT licensed. The app includes Transmission and is distributed under GPLv3. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+---
+
+Built by MORPHINE.

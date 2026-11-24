@@ -6,14 +6,17 @@ enum Snapshot {
     static func checkStatusIcon(to directory: URL) async throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = Store()
+        let savedSpeedMode = UserDefaults.standard.object(forKey: "MenuBarShowsSpeeds")
+        store.menuBarShowsSpeeds = false
+        defer { UserDefaults.standard.set(savedSpeedMode, forKey: "MenuBarShowsSpeeds") }
         var completionCount = 0
         let indicators = Indicators(store: store, completionSound: { completionCount += 1 })
         defer { indicators.reset() }
         let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
-        func transfer(_ id: Int, complete: Bool = false, error: Int = 0) -> Transfer {
+        func transfer(_ id: Int, complete: Bool = false, error: Int = 0, verifying: Bool = false) -> Transfer {
             Transfer(id: id, name: "Status icon test", hashString: "status-\(id)", downloadDir: "/tmp",
-                     errorString: "", status: complete ? 6 : 4, error: error, eta: 0, queuePosition: 0,
+                     errorString: "", status: verifying ? 2 : (complete ? 6 : 4), error: error, eta: 0, queuePosition: 0,
                      percentDone: complete ? 1 : 0.5, metadataPercentComplete: 1, uploadRatio: 0,
                      recheckProgress: 0, sizeWhenDone: 100, leftUntilDone: complete ? 0 : 50,
                      rateDownload: complete ? 0 : 1000, rateUpload: 0, uploadedEver: 0, isFinished: complete)
@@ -72,12 +75,88 @@ enum Snapshot {
         guard (button.image === resumedWave) == reducedMotion else {
             throw RillError("The wave did not return to the correct state.")
         }
+
+        // A tracker warning (error 1) does not stop the wave or hide the completion check.
+        store.transfers = [transfer(5, error: 1)]
+        indicators.update(from: store)
+        try await Task.sleep(for: .milliseconds(120))
+        let warningWave = button.image
+        try await Task.sleep(for: .milliseconds(120))
+        guard (button.image === warningWave) == reducedMotion else {
+            throw RillError("A tracker warning stopped the wave.")
+        }
+        store.transfers = [transfer(5, complete: true, error: 1)]
+        indicators.update(from: store)
+        guard indicators.completionPending, completionCount == 3 else {
+            throw RillError("A tracker warning hid the completion check.")
+        }
+        indicators.acknowledgeCompletion()
+
+        // One acknowledgement clears every queued completion.
+        store.transfers = [transfer(6), transfer(7)]
+        indicators.update(from: store)
+        store.transfers = [transfer(6, complete: true), transfer(7, complete: true)]
+        indicators.update(from: store)
+        guard indicators.completionPending, completionCount == 4 else {
+            throw RillError("Two completions did not start the queue.")
+        }
+        indicators.acknowledgeCompletion()
+        try await Task.sleep(for: .seconds(3))
+        guard !indicators.completionPending, completionCount == 4 else {
+            throw RillError("Acknowledgement did not clear the whole completion queue.")
+        }
+        print("PASS tracker warnings keep the wave and the check; one acknowledgement clears the queue")
+
+        store.transfers = [transfer(6, verifying: true)]
+        indicators.update(from: store)
+        store.transfers = [transfer(6, complete: true)]
+        indicators.update(from: store)
+        guard !indicators.completionPending, completionCount == 4 else {
+            throw RillError("Verifying a finished transfer triggered a new completion.")
+        }
+        print("PASS rechecking a finished transfer produces no new check or sound")
+
         store.transfers = []
         indicators.update(from: store)
         try await captureStatusButton(button, name: "08-idle-again", to: directory)
+        store.menuBarShowsSpeeds = true
+        indicators.update(from: store)
+        guard button.image?.isTemplate == true, button.toolTip?.contains("↓") == true,
+              button.toolTip?.contains("↑") == true,
+              button.toolTip?.contains("\n") == false, Store().menuBarShowsSpeeds else {
+            throw RillError("Menu bar speed mode did not apply or persist.")
+        }
+        try await Task.sleep(for: .seconds(1))
+        try await captureStatusButton(button, name: "09-speeds-idle", to: directory)
+        store.transfers = [transfer(15)]
+        indicators.update(from: store)
+        guard button.image?.size.width ?? 0 > 17, button.title.isEmpty else {
+            throw RillError("Speed mode was replaced by the animated icon.")
+        }
+        try await Task.sleep(for: .seconds(1))
+        try await captureStatusButton(button, name: "10-speeds-downloading", to: directory)
+        store.menuBarShowsSpeeds = false
+        indicators.update(from: store)
+        guard button.image?.isTemplate == true, button.title.isEmpty else {
+            throw RillError("The wave icon did not return after speed mode.")
+        }
+        store.transfers = []
+        indicators.update(from: store)
+        print("PASS menu bar speed mode, persistence and switching back to waves")
+        store.magnetPrompt = true
         button.performClick(nil)
+        // Let the app activate and anchor the panel before the next click.
+        try await Task.sleep(for: .milliseconds(350))
         guard indicators.popoverIsShown else { throw RillError("The status item did not open the popover.") }
         button.performClick(nil)
+        try await Task.sleep(for: .milliseconds(400))
+        guard !indicators.popoverIsShown else { throw RillError("A second click did not close the popover.") }
+        button.performClick(nil)
+        try await Task.sleep(for: .milliseconds(350))
+        guard indicators.popoverIsShown else { throw RillError("The status item did not reopen the popover.") }
+        guard indicators.popoverHasTextFocus else { throw RillError("The magnet field did not regain focus.") }
+        button.performClick(nil)
+        print("PASS magnet field regains focus when the popover reopens")
         print("PASS native status item, completion queue, errors, resume, idle and menu action (Reduce Motion: \(reducedMotion))")
     }
 
@@ -102,6 +181,9 @@ enum Snapshot {
     static func write(to directory: URL) async throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = Store.shared
+        let savedSpeedMode = UserDefaults.standard.object(forKey: "MenuBarShowsSpeeds")
+        store.menuBarShowsSpeeds = false
+        defer { UserDefaults.standard.set(savedSpeedMode, forKey: "MenuBarShowsSpeeds") }
         let savedLanguage = UserDefaults.standard.object(forKey: "AppLanguage")
         defer { UserDefaults.standard.set(savedLanguage, forKey: "AppLanguage") }
         store.language = .ru
@@ -145,6 +227,18 @@ enum Snapshot {
             }
             try await captureState(window, name: "menu-empty-\(name)", to: directory)
             try indicators.checkPanelPlacement()
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                try click(in: window, at: NSPoint(x: 44, y: 36), fromTop: true)
+                try await Task.sleep(for: .milliseconds(140))
+                try captureWindow(window, name: "logo-bounce-\(name)", to: directory)
+                try await Task.sleep(for: .seconds(1))
+                try captureWindow(window, name: "logo-rest-\(name)", to: directory)
+                try click(in: window, at: NSPoint(x: 44, y: 36), fromTop: true)
+                try await Task.sleep(for: .milliseconds(325))
+                try captureWindow(window, name: "logo-bend-\(name)", to: directory)
+                try await Task.sleep(for: .milliseconds(700))
+                try indicators.checkPanelPlacement()
+            }
             var heights: [CGFloat] = []
             for count in [0, 1, 2, 3, 8, 1, 0] {
                 store.transfers = Array(samples.prefix(count))
@@ -267,7 +361,7 @@ enum Snapshot {
         try click(in: window, at: nil)
     }
 
-    static func click(in window: NSWindow, at location: NSPoint?) throws {
+    static func click(in window: NSWindow, at location: NSPoint?, fromTop: Bool = false) throws {
         func hostingView(in view: NSView) -> NSView? {
             if String(describing: type(of: view)).contains("NSHostingView") { return view }
             return view.subviews.lazy.compactMap { hostingView(in: $0) }.first
@@ -276,7 +370,7 @@ enum Snapshot {
             throw RillError("Не найдена поверхность панели.")
         }
         var local = location ?? NSPoint(x: 6, y: host.bounds.midY)
-        if location != nil, host.isFlipped { local.y = host.bounds.height - local.y }
+        if location != nil, host.isFlipped != fromTop { local.y = host.bounds.height - local.y }
         let point = host.convert(local, to: nil)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],

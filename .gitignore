@@ -2,3 +2,11 @@
 *.app
 .DS_Store
 Toreo-*-macOS-*.zip
+
+*.dmg
+Toreo-Icons-*.zip
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example

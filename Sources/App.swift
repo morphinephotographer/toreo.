@@ -14,10 +14,10 @@ enum ToreoApp {
 @MainActor
 final class ToreoDelegate: NSObject, NSApplicationDelegate {
     private var shuttingDown = false
-    private var terminationReady = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let store = Store.shared
+        Self.installMainMenu()
         if let target = ProcessInfo.processInfo.environment["RILL_STATUS_SNAPSHOT_DIR"] {
             Task {
                 do { try await Snapshot.checkStatusIcon(to: URL(fileURLWithPath: target)); exit(0) }
@@ -70,19 +70,48 @@ final class ToreoDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if terminationReady { return .terminateNow }
-        if !shuttingDown {
-            shuttingDown = true
-            let store = Store.shared
-            store.indicators?.reset()
-            store.indicators = nil
-            Task {
-                await store.close()
-                terminationReady = true
-                sender.terminate(nil)
+        // .terminateLater keeps a logout, restart or shutdown going while the session is saved.
+        // .terminateCancel would cancel the whole logout.
+        guard !shuttingDown else { return .terminateLater }
+        shuttingDown = true
+        let store = Store.shared
+        store.indicators?.reset()
+        store.indicators = nil
+        let closing = store.beginClose()
+        Task.detached {
+            await closing.value
+            // AppKit waits in a modal run loop after .terminateLater.
+            RunLoop.main.perform(inModes: [.default, .modalPanel]) {
+                MainActor.assumeIsolated {
+                    sender.reply(toApplicationShouldTerminate: true)
+                }
             }
         }
-        // Return to the event loop so the async shutdown can finish before exiting.
-        return .terminateCancel
+        return .terminateLater
+    }
+
+    /// Without a main menu AppKit has no key equivalents for text editing,
+    /// so ⌘V, ⌘C, ⌘A and ⌘Z would not work in the magnet and search fields.
+    static func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: tr("Выйти из toreo."),
+                        action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: tr("Правка"))
+        edit.addItem(withTitle: tr("Отменить"), action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: tr("Повторить действие"), action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: tr("Вырезать"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: tr("Копировать"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: tr("Вставить"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: tr("Выбрать все"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+        NSApp.mainMenu = main
     }
 }

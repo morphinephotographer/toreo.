@@ -28,6 +28,13 @@ final class Store {
     var language = AppLanguage.current {
         didSet {
             UserDefaults.standard.set(language.rawValue, forKey: "AppLanguage")
+            if NSApp.mainMenu != nil { ToreoDelegate.installMainMenu() }
+            updateIndicators()
+        }
+    }
+    var menuBarShowsSpeeds = UserDefaults.standard.bool(forKey: "MenuBarShowsSpeeds") {
+        didSet {
+            UserDefaults.standard.set(menuBarShowsSpeeds, forKey: "MenuBarShowsSpeeds")
             updateIndicators()
         }
     }
@@ -136,12 +143,19 @@ final class Store {
     }
 
     func close() async {
+        await beginClose().value
+    }
+
+    func beginClose() -> Task<Void, Never> {
         closing = true
         ready = false
         poller?.cancel()
         importPoller?.cancel()
-        await folderUpdate?.value
-        await engine.close()
+        let pendingFolderUpdate = folderUpdate
+        return Task.detached { [engine] in
+            await pendingFolderUpdate?.value
+            await engine.close()
+        }
     }
 
     private func refresh() async {
@@ -163,7 +177,8 @@ final class Store {
                 let source = store.importFolder
                 let result = await store.engine.importTorrents(from: source, to: store.preferences.downloadDir)
                 if !Task.isCancelled, !store.closing, store.importFolder == source {
-                    store.autoImportError = result.error
+                    // Keep a dismissed message hidden until a new problem appears.
+                    if let error = result.error { store.autoImportError = error }
                     if result.imported { await store.refresh() }
                 }
                 try? await Task.sleep(for: .seconds(5), tolerance: .milliseconds(10))
@@ -182,6 +197,28 @@ final class Store {
             guard let self else { return }
             self.indicators?.showPanel()
             if result == .OK { self.enqueue(panel.urls) }
+        }
+    }
+
+    /// ⌥ + «Торрент-файл»: choose the folder and files before the download starts.
+    func chooseFileWithOptions() {
+        let panel = NSOpenPanel()
+        panel.title = tr("Добавить раздачу")
+        panel.allowedContentTypes = [UTType(filenameExtension: "torrent") ?? .data]
+        panel.allowsMultipleSelection = false
+        panel.begin { [weak self] result in
+            guard let self else { return }
+            self.indicators?.showPanel()
+            guard result == .OK, let url = panel.url else { return }
+            Task {
+                do {
+                    let draft = try await self.engine.inspect(url, folder: self.preferences.downloadDir)
+                    self.message = nil
+                    self.draft = draft
+                } catch {
+                    self.message = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -344,14 +381,23 @@ final class Store {
 
     func setDownloadFolder(_ path: String) {
         let previous = folderUpdate
-        folderUpdate = Task {
+        folderUpdate = Task.detached { [engine, weak self] in
             await previous?.value
+            let errorMessage: String?
             do {
                 try await engine.setDownloadFolder(path)
                 UserDefaults.standard.set(path, forKey: "DownloadFolder")
-                preferences.downloadDir = path
-                message = nil
-            } catch { message = error.localizedDescription }
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            RunLoop.main.perform { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, !self.closing else { return }
+                    if errorMessage == nil { self.preferences.downloadDir = path }
+                    self.message = errorMessage
+                }
+            }
         }
     }
 

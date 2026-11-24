@@ -12,7 +12,7 @@ final class MenuBarIcon: NSObject {
     private static let holdDuration = 1.5
     private static let returnDuration = 0.36
     private static let frameInterval = 1.0 / 30
-    private static let idle = StatusGlyph()
+    private static let idle = StatusGlyph(amplitude: 0)
 
     private weak var button: NSStatusBarButton?
     private let colorOverlay = StatusColorOverlay()
@@ -23,6 +23,41 @@ final class MenuBarIcon: NSObject {
     private var downloadStartedAt: TimeInterval?
     private var lastFrame: StatusGlyph?
     private var animation: Task<Void, Never>?
+    private var showsSpeeds = false
+
+    func setShowsSpeeds(_ enabled: Bool, download: Int64, upload: Int64) {
+        let changed = showsSpeeds != enabled
+        showsSpeeds = enabled
+        let speedLabel = "↓ " + rate(download) + "   ↑ " + rate(upload)
+        if enabled {
+            button?.imagePosition = .imageOnly
+            colorOverlay.image = nil
+            let label = NSAttributedString(
+                string: speedLabel,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                             .foregroundColor: NSColor.black]
+            )
+            let textSize = label.size()
+            let image = NSImage(size: NSSize(width: ceil(textSize.width), height: 17), flipped: false) { rect in
+                label.draw(at: NSPoint(x: 0, y: (rect.height - textSize.height) / 2))
+                return true
+            }
+            image.isTemplate = true
+            button?.image = image
+            button?.title = ""
+            button?.toolTip = speedLabel
+            button?.setAccessibilityValue(speedLabel)
+        } else if changed {
+            button?.imagePosition = .imageOnly
+            button?.title = ""
+            button?.toolTip = nil
+            button?.setAccessibilityValue(nil)
+        }
+        if changed {
+            lastFrame = nil
+            restartAnimation()
+        }
+    }
 
     var completionPending: Bool { completion != nil }
 
@@ -51,22 +86,33 @@ final class MenuBarIcon: NSObject {
     func update(transfers: [Transfer]) {
         let now = ProcessInfo.processInfo.systemUptime
         let wasDownloading = downloadStartedAt != nil
-        let isDownloading = transfers.contains { $0.downloading && $0.error == 0 }
+        // Tracker warnings and errors (codes 1 and 2) do not stop a transfer, only local errors do.
+        let isDownloading = transfers.contains { $0.downloading && !$0.hasLocalError }
         let wasCompleting = completionPending
         let previousWave = waveMotion(at: now)
-        let failed = Set(transfers.lazy.filter { $0.error != 0 }.map(\.hashString))
+        let present = Set(transfers.map(\.hashString))
+        let failed = Set(transfers.lazy.filter(\.hasLocalError).map(\.hashString))
+        let dropped = { (hash: String) in failed.contains(hash) || !present.contains(hash) }
 
-        pending.removeAll { failed.contains($0) }
-        for transfer in transfers where transfer.complete && transfer.error == 0 {
-            if previousCompletion[transfer.hashString] == false {
-                pending.append(transfer.hashString)
+        pending.removeAll(where: dropped)
+        for transfer in transfers where transfer.complete && !transfer.hasLocalError && !transfer.verifying {
+            let hash = transfer.hashString
+            if previousCompletion[hash] == false, !pending.contains(hash), completion?.hash != hash {
+                pending.append(hash)
             }
         }
-        previousCompletion = Dictionary(transfers.map { ($0.hashString, $0.complete) },
-                                        uniquingKeysWith: { _, latest in latest })
+        // A recheck can briefly lower the progress of a finished transfer.
+        // Keep the state from before the recheck so it does not look like a new completion.
+        var completionState: [String: Bool] = [:]
+        for transfer in transfers {
+            let hash = transfer.hashString
+            completionState[hash] = transfer.verifying
+                ? (previousCompletion[hash] ?? transfer.complete) : transfer.complete
+        }
+        previousCompletion = completionState
 
         if isDownloading != wasDownloading { downloadStartedAt = isDownloading ? now : nil }
-        let failedCompletion = completion.map { failed.contains($0.hash) } == true
+        let failedCompletion = completion.map { dropped($0.hash) } == true
         if failedCompletion { completion = nil }
         if completion == nil { beginNextCompletion(at: now, waveMotion: previousWave) }
         updateAccessibility()
@@ -77,10 +123,10 @@ final class MenuBarIcon: NSObject {
         }
     }
 
+    /// Opening the panel shows every finished transfer, so one click acknowledges the whole queue.
     func acknowledgeCompletion() {
-        let now = ProcessInfo.processInfo.systemUptime
+        pending.removeAll()
         completion = nil
-        beginNextCompletion(at: now, waveMotion: waveMotion(at: now))
         updateAccessibility()
         restartAnimation()
     }
@@ -136,8 +182,8 @@ final class MenuBarIcon: NSObject {
             updateAccessibility()
         }
         guard let completion else {
-            display(motion == 0 ? Self.idle : StatusGlyph(motion: motion))
-            return !reduceMotion && downloadStartedAt != nil ? Self.frameInterval : nil
+            display(downloadStartedAt == nil ? Self.idle : StatusGlyph(motion: motion))
+            return !showsSpeeds && !reduceMotion && downloadStartedAt != nil ? Self.frameInterval : nil
         }
 
         let elapsed = now - completion.startedAt
@@ -159,13 +205,14 @@ final class MenuBarIcon: NSObject {
 
         let returning = elapsed - holdEnd
         let wave = Self.ease((returning - 0.12) / 0.24)
-        display(StatusGlyph(motion: motion * wave, amplitude: wave, waveOpacity: wave,
+        display(StatusGlyph(motion: motion * wave, amplitude: downloadStartedAt == nil ? 0 : wave, waveOpacity: wave,
                             green: 1 - Self.ease(returning / 0.30), checkProgress: 1,
                             checkOpacity: 1 - Self.ease(returning / 0.16)))
         return Self.frameInterval
     }
 
     private func display(_ frame: StatusGlyph) {
+        guard !showsSpeeds else { return }
         guard lastFrame != frame else { return }
         if lastFrame?.sameMonochrome(as: frame) != true { button?.image = frame.monochromeImage() }
         if lastFrame?.sameColor(as: frame) != true { colorOverlay.image = frame.colorImage() }
@@ -184,7 +231,7 @@ private final class StatusColorOverlay: NSImageView {
 }
 
 private struct StatusGlyph: Equatable {
-    // The outline occupies 57.2 of the 64 drawing units, about 15 pt at this size.
+    // The two ribbons occupy about 15 pt inside the status button.
     static let size = NSSize(width: 17, height: 17)
     private static let greenInk = CGColor(red: 56.0 / 255, green: 216.0 / 255, blue: 121.0 / 255, alpha: 1)
 
@@ -207,19 +254,19 @@ private struct StatusGlyph: Equatable {
     func monochromeImage() -> NSImage {
         image(template: true) { context in
             context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-            if green < 1 { Self.strokeCircle(in: context) }
             guard waveOpacity > 0 else { return }
             context.setAlpha(waveOpacity)
-            for index in 0...24 {
-                let t = Double(index) / 24
-                // Taper only the animated displacement so the endpoints stay on the circle.
-                let baseWave = sin(t * 2 * .pi) * 5.5
-                let movingWave = sin(.pi * t) * (sin(t * 2 * .pi + motion * 0.85) * 5.5 - baseWave
-                                                 + motion * 4)
-                let point = CGPoint(x: 5 + 54 * t, y: 32 + (baseWave + movingWave) * amplitude)
-                if index == 0 { context.move(to: point) } else { context.addLine(to: point) }
+            context.setLineWidth(7)
+            context.setLineCap(.butt)
+            for baseline in [22.0, 42.0] {
+                for index in 0...48 {
+                    let t = Double(index) / 48
+                    let wave = sin(t * 2 * .pi + motion * 1.4) * 4 * amplitude
+                    let point = CGPoint(x: 5 + 54 * t, y: baseline + wave)
+                    if index == 0 { context.move(to: point) } else { context.addLine(to: point) }
+                }
+                context.strokePath()
             }
-            context.strokePath()
         }
     }
 
@@ -228,7 +275,6 @@ private struct StatusGlyph: Equatable {
         return image(template: false) { context in
             context.setStrokeColor(Self.greenInk)
             context.setAlpha(green)
-            Self.strokeCircle(in: context)
             guard checkProgress > 0, checkOpacity > 0 else { return }
 
             context.setAlpha(checkOpacity)
@@ -265,10 +311,6 @@ private struct StatusGlyph: Equatable {
         }
         image.isTemplate = template
         return image
-    }
-
-    private static func strokeCircle(in context: CGContext) {
-        context.strokeEllipse(in: CGRect(x: 5, y: 5, width: 54, height: 54))
     }
 
     private static func interpolate(from a: CGPoint, to b: CGPoint, fraction: CGFloat) -> CGPoint {

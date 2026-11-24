@@ -18,9 +18,9 @@ struct MenuPanel: View {
 
     private var visibleTransfers: [Transfer] {
         // Prefer active work, then attention and paused states, then completed items.
-        let active = store.transfers.filter { !$0.paused && !$0.complete && $0.error == 0 }
-        let other = store.transfers.filter { $0.error != 0 || ($0.paused && !$0.complete) || (!$0.paused && $0.complete) }
-        let completed = store.transfers.filter { $0.paused && $0.complete && $0.error == 0 }
+        let active = store.transfers.filter { !$0.paused && !$0.complete && !$0.hasLocalError }
+        let other = store.transfers.filter { $0.hasLocalError || ($0.paused && !$0.complete) || (!$0.paused && $0.complete) }
+        let completed = store.transfers.filter { $0.paused && $0.complete && !$0.hasLocalError }
         let transfers = active + other + completed
         return search.isEmpty ? transfers : transfers.filter { $0.name.localizedStandardContains(search) }
     }
@@ -57,6 +57,10 @@ struct MenuPanel: View {
             return true
         }
         .focusEffectDisabled()
+        .onReceive(NotificationCenter.default.publisher(for: NSPopover.didShowNotification)) { _ in
+            // The popover keeps its views between openings, so the field does not appear again.
+            if store.magnetPrompt { magnetFocused = true }
+        }
         .onExitCommand(perform: goBack)
         .task(id: SearchRequest(query: search, folder: store.preferences.downloadDir)) {
             foundFiles = []
@@ -165,7 +169,7 @@ struct MenuPanel: View {
     }
 
     private var header: some View {
-        PanelHeader("toreo.") {
+        PanelHeader(title: { ToreoWordmark() }) {
             let pause = canPause
             MenuCircle(pause ? tr("Приостановить все загрузки") : tr("Продолжить все загрузки"),
                        symbol: pause ? "pause.fill" : "play.fill") {
@@ -193,7 +197,12 @@ struct MenuPanel: View {
                         .padding(.horizontal, 12)
                         .frame(height: MenuGrid.control)
                         .background(.thinMaterial, in: Capsule())
-                        .onAppear { magnetFocused = true }
+                        .overlay(Capsule().strokeBorder(.primary.opacity(0.12)))
+                        .task {
+                            // Wait one turn so the field is in the key window before taking focus.
+                            await Task.yield()
+                            magnetFocused = true
+                        }
                         .onSubmit(submitMagnet)
                     MenuCircle(tr("Добавить magnet"), symbol: "arrow.right", action: submitMagnet)
                         .disabled(magnetURL == nil)
@@ -202,9 +211,14 @@ struct MenuPanel: View {
                     InlineChoices {
                         Button(tr("Торрент-файл")) {
                             store.dismissTransientOptions()
-                            store.chooseFile()
+                            if NSEvent.modifierFlags.contains(.option) {
+                                store.chooseFileWithOptions()
+                            } else {
+                                store.chooseFile()
+                            }
                         }
                         .keyboardShortcut("o")
+                        .help(tr("С ⌥ — выбрать папку и файлы перед загрузкой"))
                         Button(tr("Magnet-ссылка")) {
                             store.dismissTransientOptions()
                             store.magnetText = ""
@@ -225,6 +239,7 @@ struct MenuPanel: View {
                     .padding(.horizontal, 12)
                     .frame(height: MenuGrid.control)
                     .background(.thinMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.primary.opacity(0.12)))
                     .contextMenu {
                         Button(tr("Открыть папку загрузки"), systemImage: "folder") {
                             let folder = URL(fileURLWithPath: store.preferences.downloadDir, isDirectory: true)
@@ -265,7 +280,8 @@ private struct MenuTransferRow: View {
     private var showingProblem: Bool { store.expandedProblem == transfer.hashString }
 
     private var problem: String? {
-        if transfer.error != 0 { return transfer.errorString.isEmpty ? tr("Ошибка передачи") : transfer.errorString }
+        // Tracker messages stay in the tooltip and the context menu: the transfer itself keeps working.
+        if transfer.hasLocalError { return transfer.errorString.isEmpty ? tr("Ошибка передачи") : transfer.errorString }
         if store.unavailableFiles.contains(transfer.hashString) { return tr("Скачанный файл недоступен") }
         return nil
     }
@@ -291,6 +307,7 @@ private struct MenuTransferRow: View {
                         store.trash(transfer)
                     }
                     .foregroundStyle(.red)
+                    .fontWeight(.semibold)
                     .disabled(transfer.metadataPercentComplete < 1)
                 }
             } else {
@@ -324,6 +341,7 @@ private struct MenuTransferRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .help(trackerMessage ?? "")
 
                         GeometryReader { proxy in
                             Capsule().fill(.primary.opacity(0.14))
@@ -340,7 +358,8 @@ private struct MenuTransferRow: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(ClearGlassButtonStyle(bordered: false))
-
+                // A card of a running transfer has no tap action, so VoiceOver should not call it a button.
+                .accessibilityRemoveTraits(transfer.complete || problem != nil ? AccessibilityTraits() : .isButton)
                 .transition(.opacity)
             }
             if showingOptions {
@@ -379,6 +398,12 @@ private struct MenuTransferRow: View {
                 Button(tr("Продолжить раздачу")) { store.toggle(transfer) }
             }
             Button(tr("Проверить файлы")) { store.command(transfer, "torrent_verify") }
+            if let trackerMessage {
+                let title: String = tr("Повторить запрос к трекеру") + " — " + trackerMessage
+                Button(title) {
+                    store.command(transfer, "torrent_reannounce")
+                }
+            }
             Divider()
             Button(tr("Удалить торрент…"), role: .destructive) {
                 store.armedRemoval = transfer.hashString
@@ -387,6 +412,11 @@ private struct MenuTransferRow: View {
             Button(tr("Удалить с файлами"), role: .destructive) { store.trash(transfer) }
                 .disabled(transfer.metadataPercentComplete < 1)
         }
+    }
+
+    private var trackerMessage: String? {
+        guard transfer.hasTrackerIssue, !transfer.errorString.isEmpty else { return nil }
+        return transfer.errorString
     }
 
     private var problemActions: some View {
@@ -436,6 +466,7 @@ private struct MenuTransferRow: View {
 enum MenuGrid {
     static let gutter: CGFloat = 8
     static let control: CGFloat = 40
+    static let titleSize: CGFloat = 24
     static let choiceWidth: CGFloat = 112
     static let choiceAnimation = Animation.easeInOut(duration: 0.2)
 }
@@ -460,8 +491,10 @@ struct MenuCircle: View {
     let color: Color
     let action: () -> Void
 
-    init(_ title: String, symbol: String, color: Color = .primary, action: @escaping () -> Void) {
-        self.title = title
+    /// Pass `localized: false` for user data such as file names.
+    init(_ title: String, symbol: String, color: Color = .primary, localized: Bool = true,
+         action: @escaping () -> Void) {
+        self.title = localized ? tr(title) : title
         self.symbol = symbol
         self.color = color
         self.action = action
@@ -469,7 +502,7 @@ struct MenuCircle: View {
 
     var body: some View {
         Button(action: action) {
-            Label(tr(title), systemImage: symbol)
+            Label(title, systemImage: symbol)
                 .labelStyle(.iconOnly)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(color)
@@ -525,12 +558,16 @@ enum ProblemAction {
         }
     }
 
+    /// Transmission is built without NLS, so its messages are always English.
+    /// Toreo's own localized texts are passed as flags and never parsed.
     static func resolve(code: Int, message: String, missingFile: Bool) -> Self {
+        if missingFile { return .verify }
         let text = message.lowercased()
-        if ["permission", "read-only", "no space", "directory", "доступ", "места", "папк"].contains(where: text.contains) {
+        if ["set location", "no data found", "permission", "read-only", "no space", "not a directory"]
+            .contains(where: text.contains) {
             return .chooseFolder
         }
-        if missingFile || ["not found", "no such file", "missing", "не найден", "нет данных"].contains(where: text.contains) {
+        if ["not found", "no such file", "missing"].contains(where: text.contains) {
             return .verify
         }
         if code == 1 || code == 2 { return .retry }
@@ -538,23 +575,29 @@ enum ProblemAction {
     }
 }
 
-struct PanelHeader<Controls: View>: View {
-    let title: String
+struct PanelHeader<Title: View, Controls: View>: View {
+    let title: Title
     @ViewBuilder var controls: () -> Controls
 
-    init(_ title: String, @ViewBuilder controls: @escaping () -> Controls) {
-        self.title = title
+    init(@ViewBuilder title: () -> Title, @ViewBuilder controls: @escaping () -> Controls) {
+        self.title = title()
         self.controls = controls
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(tr(title)).font(.system(size: 24, weight: .bold))
+            title.font(.system(size: MenuGrid.titleSize, weight: .bold))
             Spacer(minLength: 8)
             controls()
         }
         .frame(height: MenuGrid.control)
         .padding(.trailing, MenuGrid.gutter)
+    }
+}
+
+extension PanelHeader where Title == Text {
+    init(_ title: String, @ViewBuilder controls: @escaping () -> Controls) {
+        self.init(title: { Text(tr(title)) }, controls: controls)
     }
 }
 

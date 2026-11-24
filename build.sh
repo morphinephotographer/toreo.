@@ -6,15 +6,26 @@ source_dir="${TRANSMISSION_SOURCE:-"$work/transmission"}"
 cmake="${CMAKE:-cmake}"
 destination="${RILL_APP_PATH:-"$root/toreo..app"}"
 mkdir -p "$work"
-if [[ ! -d "$source_dir/.git" ]]; then
+if [[ ! -e "$source_dir/.git" && ! -f "$source_dir/TOREO_SOURCE_REVISION" ]]; then
   git clone --branch 4.1.4 --depth 1 https://github.com/transmission/transmission.git "$source_dir"
 fi
-if [[ "$(git -C "$source_dir" rev-parse HEAD)" != a6d907d9ea2313143af714d7830feb6c1b60b84c ]]; then
+if [[ -e "$source_dir/.git" ]]; then
+  source_revision="$(git -C "$source_dir" rev-parse HEAD)"
+else
+  source_revision="$(cat "$source_dir/TOREO_SOURCE_REVISION")"
+fi
+if [[ "$source_revision" != a6d907d9ea2313143af714d7830feb6c1b60b84c ]]; then
   echo "The build requires Transmission 4.1.4 (a6d907d)." >&2
   exit 1
 fi
-if git -C "$source_dir" submodule status --recursive | grep -q '^-'; then
+if [[ -e "$source_dir/.git" ]] && git -C "$source_dir" submodule status --recursive | grep -q '^-'; then
   git -C "$source_dir" submodule update --init --recursive --depth 1
+fi
+# libpsl embeds the input filename in its generated data. Keep that metadata portable.
+psl_generator="$source_dir/third-party/libpsl/src/psl-make-dafsa"
+if grep -Fq 'bytes(psl_input_file, **codecs)' "$psl_generator"; then
+  patch --silent -d "$source_dir" -p1 < "$root/Engine/patches/libpsl-path.patch"
+  rm -f "$work/rill-engine/transmission/third-party/libpsl.bld/src/psl-stamp/"{psl-build,psl-install,psl-done}
 fi
 "$cmake" -S "$root/Engine" -B "$work/rill-engine" \
   -DTRANSMISSION_SOURCE="$source_dir" -DCMAKE_BUILD_TYPE=Release \
@@ -25,6 +36,7 @@ trap 'rm -rf "$stage"' EXIT
 app="$stage/toreo..app"
 mkdir -p "$app/Contents/"{MacOS,Frameworks,Resources}
 cp "$root/Info.plist" "$app/Contents/Info.plist"
+cp "$root/LICENSE" "$root/THIRD_PARTY_NOTICES.md" "$app/Contents/Resources/"
 cp "$work/rill-engine/libRillEngine.dylib" "$app/Contents/Frameworks/"
 cp "$source_dir/COPYING" "$app/Contents/Resources/Transmission-COPYING"
 cp -R "$source_dir/licenses" "$app/Contents/Resources/Transmission-licenses"
@@ -43,7 +55,8 @@ macro_flags=()
 if [[ "${RILL_DISABLE_MACRO_SANDBOX:-0}" == 1 ]]; then
   macro_flags=(-Xfrontend -disable-sandbox)
 fi
-xcrun swiftc "${macro_flags[@]}" -swift-version 6 -O -target arm64-apple-macos26.0 \
+# Bash 3.2 treats an empty array as unset under set -u.
+xcrun swiftc ${macro_flags[@]+"${macro_flags[@]}"} -swift-version 6 -O -target arm64-apple-macos26.0 \
   -module-cache-path "$work/module-cache" -import-objc-header "$root/Engine/Bridge.h" \
   -L "$app/Contents/Frameworks" -lRillEngine -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   "$root"/Sources/*.swift -o "$app/Contents/MacOS/Toreo"
