@@ -12,7 +12,7 @@ final class MenuBarIcon: NSObject {
     private static let holdDuration = 1.5
     private static let returnDuration = 0.36
     private static let frameInterval = 1.0 / 30
-    private static let idle = StatusGlyph()
+    private static let idle = StatusGlyph(amplitude: 0)
 
     private weak var button: NSStatusBarButton?
     private let colorOverlay = StatusColorOverlay()
@@ -23,6 +23,32 @@ final class MenuBarIcon: NSObject {
     private var downloadStartedAt: TimeInterval?
     private var lastFrame: StatusGlyph?
     private var animation: Task<Void, Never>?
+    private var showsSpeeds = false
+
+    func setShowsSpeeds(_ enabled: Bool, download: Int64, upload: Int64) {
+        let changed = showsSpeeds != enabled
+        showsSpeeds = enabled
+        let speedLabel = "↓ " + rate(download) + "\n↑ " + rate(upload)
+        if enabled {
+            button?.imagePosition = .noImage
+            button?.image = nil
+            colorOverlay.image = nil
+            button?.attributedTitle = NSAttributedString(
+                string: speedLabel,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
+                             .foregroundColor: NSColor.labelColor]
+            )
+            button?.setAccessibilityValue(speedLabel.replacingOccurrences(of: "\n", with: ", "))
+        } else if changed {
+            button?.imagePosition = .imageOnly
+            button?.title = ""
+            button?.setAccessibilityValue(nil)
+        }
+        if changed {
+            lastFrame = nil
+            restartAnimation()
+        }
+    }
 
     var completionPending: Bool { completion != nil }
 
@@ -147,8 +173,8 @@ final class MenuBarIcon: NSObject {
             updateAccessibility()
         }
         guard let completion else {
-            display(motion == 0 ? Self.idle : StatusGlyph(motion: motion))
-            return !reduceMotion && downloadStartedAt != nil ? Self.frameInterval : nil
+            display(downloadStartedAt == nil ? Self.idle : StatusGlyph(motion: motion))
+            return !showsSpeeds && !reduceMotion && downloadStartedAt != nil ? Self.frameInterval : nil
         }
 
         let elapsed = now - completion.startedAt
@@ -170,13 +196,14 @@ final class MenuBarIcon: NSObject {
 
         let returning = elapsed - holdEnd
         let wave = Self.ease((returning - 0.12) / 0.24)
-        display(StatusGlyph(motion: motion * wave, amplitude: wave, waveOpacity: wave,
+        display(StatusGlyph(motion: motion * wave, amplitude: downloadStartedAt == nil ? 0 : wave, waveOpacity: wave,
                             green: 1 - Self.ease(returning / 0.30), checkProgress: 1,
                             checkOpacity: 1 - Self.ease(returning / 0.16)))
         return Self.frameInterval
     }
 
     private func display(_ frame: StatusGlyph) {
+        guard !showsSpeeds else { return }
         guard lastFrame != frame else { return }
         if lastFrame?.sameMonochrome(as: frame) != true { button?.image = frame.monochromeImage() }
         if lastFrame?.sameColor(as: frame) != true { colorOverlay.image = frame.colorImage() }
@@ -195,7 +222,7 @@ private final class StatusColorOverlay: NSImageView {
 }
 
 private struct StatusGlyph: Equatable {
-    // The outline occupies 57.2 of the 64 drawing units, about 15 pt at this size.
+    // The two ribbons occupy about 15 pt inside the status button.
     static let size = NSSize(width: 17, height: 17)
     private static let greenInk = CGColor(red: 56.0 / 255, green: 216.0 / 255, blue: 121.0 / 255, alpha: 1)
 
@@ -218,19 +245,19 @@ private struct StatusGlyph: Equatable {
     func monochromeImage() -> NSImage {
         image(template: true) { context in
             context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-            if green < 1 { Self.strokeCircle(in: context) }
             guard waveOpacity > 0 else { return }
             context.setAlpha(waveOpacity)
-            for index in 0...24 {
-                let t = Double(index) / 24
-                // Taper only the animated displacement so the endpoints stay on the circle.
-                let baseWave = sin(t * 2 * .pi) * 5.5
-                let movingWave = sin(.pi * t) * (sin(t * 2 * .pi + motion * 0.85) * 5.5 - baseWave
-                                                 + motion * 4)
-                let point = CGPoint(x: 5 + 54 * t, y: 32 + (baseWave + movingWave) * amplitude)
-                if index == 0 { context.move(to: point) } else { context.addLine(to: point) }
+            context.setLineWidth(7)
+            context.setLineCap(.butt)
+            for baseline in [22.0, 42.0] {
+                for index in 0...48 {
+                    let t = Double(index) / 48
+                    let wave = sin(t * 2 * .pi + motion * 1.4) * 4 * amplitude
+                    let point = CGPoint(x: 5 + 54 * t, y: baseline + wave)
+                    if index == 0 { context.move(to: point) } else { context.addLine(to: point) }
+                }
+                context.strokePath()
             }
-            context.strokePath()
         }
     }
 
@@ -239,7 +266,6 @@ private struct StatusGlyph: Equatable {
         return image(template: false) { context in
             context.setStrokeColor(Self.greenInk)
             context.setAlpha(green)
-            Self.strokeCircle(in: context)
             guard checkProgress > 0, checkOpacity > 0 else { return }
 
             context.setAlpha(checkOpacity)
@@ -276,10 +302,6 @@ private struct StatusGlyph: Equatable {
         }
         image.isTemplate = template
         return image
-    }
-
-    private static func strokeCircle(in context: CGContext) {
-        context.strokeEllipse(in: CGRect(x: 5, y: 5, width: 54, height: 54))
     }
 
     private static func interpolate(from a: CGPoint, to b: CGPoint, fraction: CGFloat) -> CGPoint {

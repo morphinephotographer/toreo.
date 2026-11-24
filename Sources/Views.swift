@@ -179,6 +179,10 @@ struct PreferencesPanel: View {
                 folderRow(tr("Папка загрузки"), path: store.preferences.downloadDir, select: store.setDownloadFolder)
                 folderRow(tr("Автоимпорт .torrent"), path: store.importFolder, select: store.setImportFolder)
                 choiceRow("Языки", value: store.language.title, symbol: "globe", action: store.cycleLanguage)
+                choiceRow("Строка меню", value: tr(store.menuBarShowsSpeeds ? "Скорость загрузки и отдачи" : "Две волны"),
+                          symbol: "arrow.up.arrow.down") {
+                    store.menuBarShowsSpeeds.toggle()
+                }
                 choiceRow("Иконка Dock", value: store.dockIcon.title, symbol: "dock.rectangle", action: store.cycleDockIcon)
             }
 

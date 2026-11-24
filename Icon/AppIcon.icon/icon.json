@@ -16,32 +16,36 @@
     {
       "layers": [
         {
-          "name": "wordmark",
+          "name": "toreo.",
           "glass": false,
           "image-name-specializations": [
             {
-              "value": "wordmark.svg"
+              "value": "status-wordmark.svg"
             },
             {
               "appearance": "dark",
-              "value": "wordmark-dark.svg"
+              "value": "status-wordmark-dark.svg"
             },
             {
               "appearance": "tinted",
-              "value": "wordmark-dark.svg"
+              "value": "status-wordmark-dark.svg"
             }
           ]
         },
         {
-          "name": "three waves",
+          "name": "two waves",
           "glass": false,
           "image-name-specializations": [
             {
-              "value": "wave.svg"
+              "value": "two-waves.svg"
             },
             {
               "appearance": "dark",
-              "value": "wave-dark.svg"
+              "value": "two-waves-dark.svg"
+            },
+            {
+              "appearance": "tinted",
+              "value": "two-waves-dark.svg"
             }
           ]
         }

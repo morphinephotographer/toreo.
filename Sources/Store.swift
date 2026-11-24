@@ -32,6 +32,12 @@ final class Store {
             updateIndicators()
         }
     }
+    var menuBarShowsSpeeds = UserDefaults.standard.bool(forKey: "MenuBarShowsSpeeds") {
+        didSet {
+            UserDefaults.standard.set(menuBarShowsSpeeds, forKey: "MenuBarShowsSpeeds")
+            updateIndicators()
+        }
+    }
     private(set) var dockIcon = DockIcon.saved
     var importFolder = UserDefaults.standard.string(forKey: "AutoImportFolder") ?? Store.defaultImportFolder
     var unavailableFiles: Set<String> = []

@@ -40,6 +40,8 @@ final class Indicators: NSObject, NSPopoverDelegate {
                 statusIcon = MenuBarIcon(button: button, completionSound: completionSound)
             }
         }
+        item?.length = store.menuBarShowsSpeeds ? NSStatusItem.variableLength : NSStatusItem.squareLength
+        statusIcon?.setShowsSpeeds(store.menuBarShowsSpeeds, download: store.down, upload: store.up)
         statusIcon?.update(transfers: store.transfers)
     }
 

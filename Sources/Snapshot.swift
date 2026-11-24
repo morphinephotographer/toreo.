@@ -6,6 +6,9 @@ enum Snapshot {
     static func checkStatusIcon(to directory: URL) async throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = Store()
+        let savedSpeedMode = UserDefaults.standard.object(forKey: "MenuBarShowsSpeeds")
+        store.menuBarShowsSpeeds = false
+        defer { UserDefaults.standard.set(savedSpeedMode, forKey: "MenuBarShowsSpeeds") }
         var completionCount = 0
         let indicators = Indicators(store: store, completionSound: { completionCount += 1 })
         defer { indicators.reset() }
@@ -116,6 +119,27 @@ enum Snapshot {
         store.transfers = []
         indicators.update(from: store)
         try await captureStatusButton(button, name: "08-idle-again", to: directory)
+        store.menuBarShowsSpeeds = true
+        indicators.update(from: store)
+        guard button.image == nil, button.attributedTitle.string.contains("↓"),
+              button.attributedTitle.string.contains("↑"), Store().menuBarShowsSpeeds else {
+            throw RillError("Menu bar speed mode did not apply or persist.")
+        }
+        try await captureStatusButton(button, name: "09-speeds-idle", to: directory)
+        store.transfers = [transfer(15)]
+        indicators.update(from: store)
+        guard button.image == nil, !button.attributedTitle.string.isEmpty else {
+            throw RillError("Speed mode was replaced by the animated icon.")
+        }
+        try await captureStatusButton(button, name: "10-speeds-downloading", to: directory)
+        store.menuBarShowsSpeeds = false
+        indicators.update(from: store)
+        guard button.image?.isTemplate == true, button.title.isEmpty else {
+            throw RillError("The wave icon did not return after speed mode.")
+        }
+        store.transfers = []
+        indicators.update(from: store)
+        print("PASS menu bar speed mode, persistence and switching back to waves")
         store.magnetPrompt = true
         button.performClick(nil)
         // Let the app activate and anchor the panel before the next click.
@@ -154,6 +178,9 @@ enum Snapshot {
     static func write(to directory: URL) async throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = Store.shared
+        let savedSpeedMode = UserDefaults.standard.object(forKey: "MenuBarShowsSpeeds")
+        store.menuBarShowsSpeeds = false
+        defer { UserDefaults.standard.set(savedSpeedMode, forKey: "MenuBarShowsSpeeds") }
         let savedLanguage = UserDefaults.standard.object(forKey: "AppLanguage")
         defer { UserDefaults.standard.set(savedLanguage, forKey: "AppLanguage") }
         store.language = .ru

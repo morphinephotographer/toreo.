@@ -1,7 +1,7 @@
 import AppKit
 
 enum DockIcon: String, CaseIterable {
-    case hidden, waves, dark, clearLight, clearDark, blue, green
+    case hidden, twoWaves, twoWavesDark, monochromeLight, monochromeDark, status, waves, dark, clearLight, clearDark, blue, green
 
     static let preferenceKey = "DockIcon"
 
@@ -13,6 +13,11 @@ enum DockIcon: String, CaseIterable {
     var title: String {
         switch self {
         case .hidden: tr("Скрыто из Dock")
+        case .twoWaves: tr("Синий и мята")
+        case .twoWavesDark: tr("Синий и мята · тёмная")
+        case .monochromeLight: tr("Чёрно-белая · светлая")
+        case .monochromeDark: tr("Чёрно-белая · тёмная")
+        case .status: tr("Круг с волной")
         case .waves: tr("Светлая")
         case .dark: tr("Тёмная")
         case .clearLight: tr("Прозрачная светлая")

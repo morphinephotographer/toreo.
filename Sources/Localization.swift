@@ -22,10 +22,18 @@ func tr(_ key: String, language: AppLanguage = .current) -> String {
 }
 
 private let translations: [String: [String]] = [
+    "Синий и мята": ["Blue and mint", "Синій і м’ята"],
+    "Синий и мята · тёмная": ["Blue and mint · dark", "Синій і м’ята · темна"],
+    "Чёрно-белая · светлая": ["Monochrome · light", "Чорно-біла · світла"],
+    "Чёрно-белая · тёмная": ["Monochrome · dark", "Чорно-біла · темна"],
+    "Строка меню": ["Menu bar", "Рядок меню"],
+    "Скорость загрузки и отдачи": ["Download and upload speed", "Швидкість завантаження й віддачі"],
     "Настройки": ["settings.", "Налаштування"],
     "Языки": ["Languages", "Мови"],
     "Иконка Dock": ["Dock icon", "Іконка Dock"],
     "Скрыто из Dock": ["Hidden from Dock", "Приховано з Dock"],
+    "Две волны": ["Two waves", "Дві хвилі"],
+    "Круг с волной": ["Circle with wave", "Коло з хвилею"],
     "Светлая": ["Light", "Світла"],
     "Тёмная": ["Dark", "Темна"],
     "Прозрачная светлая": ["Clear Light", "Прозора світла"],
