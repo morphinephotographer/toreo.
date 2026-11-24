@@ -18,8 +18,8 @@ A native menu bar torrent client for Apple Silicon. Add a torrent or magnet link
 <p align="center"><sub>Apple Silicon · macOS 26 or later · English, Українська, Русский</sub></p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/transfers-dark.png">
-  <img src="docs/images/transfers-light.png" width="420" alt="toreo.">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-en-dark.png">
+  <img src="docs/images/settings-en-light.png" width="420" alt="toreo. settings in English">
 </picture>
 
 ## Made for your menu bar

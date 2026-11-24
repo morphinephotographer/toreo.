@@ -18,8 +18,8 @@
 <p align="center"><sub>Apple Silicon · macOS 26 або новіша · English, Українська, Русский</sub></p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/transfers-dark.png">
-  <img src="docs/images/transfers-light.png" width="420" alt="toreo.">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-uk-dark.png">
+  <img src="docs/images/settings-uk-light.png" width="420" alt="Налаштування toreo. українською">
 </picture>
 
 ## Усе поруч, у рядку меню
