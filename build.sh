@@ -21,6 +21,12 @@ fi
 if [[ -e "$source_dir/.git" ]] && git -C "$source_dir" submodule status --recursive | grep -q '^-'; then
   git -C "$source_dir" submodule update --init --recursive --depth 1
 fi
+# libpsl embeds the input filename in its generated data. Keep that metadata portable.
+psl_generator="$source_dir/third-party/libpsl/src/psl-make-dafsa"
+if grep -Fq 'bytes(psl_input_file, **codecs)' "$psl_generator"; then
+  patch --silent -d "$source_dir" -p1 < "$root/Engine/patches/libpsl-path.patch"
+  rm -f "$work/rill-engine/transmission/third-party/libpsl.bld/src/psl-stamp/"{psl-build,psl-install,psl-done}
+fi
 "$cmake" -S "$root/Engine" -B "$work/rill-engine" \
   -DTRANSMISSION_SOURCE="$source_dir" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5

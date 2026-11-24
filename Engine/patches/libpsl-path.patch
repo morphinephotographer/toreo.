@@ -1,0 +1,5 @@
+--- a/third-party/libpsl/src/psl-make-dafsa
++++ b/third-party/libpsl/src/psl-make-dafsa
+@@ -521 +521 @@
+-  text += b'static const char _psl_filename[] = "%s";\n' % bytes(psl_input_file, **codecs)
++  text += b'static const char _psl_filename[] = "%s";\n' % bytes(os.path.basename(psl_input_file), **codecs)

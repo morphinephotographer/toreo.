@@ -9,6 +9,9 @@ or GPLv3, with an additional OpenSSL linking permission. The combined applicatio
 is distributed under GPLv3. The MIT terms for the original toreo. files remain
 available for those files.
 
+The build applies Engine/patches/libpsl-path.patch to store only the public
+suffix list filename in generated metadata.
+
 The application bundle includes Transmission-COPYING and
 Transmission-licenses, including the full GPLv3 text. Other dependencies retain
 their own copyright and license notices.
