@@ -121,16 +121,19 @@ enum Snapshot {
         try await captureStatusButton(button, name: "08-idle-again", to: directory)
         store.menuBarShowsSpeeds = true
         indicators.update(from: store)
-        guard button.image == nil, button.attributedTitle.string.contains("↓"),
-              button.attributedTitle.string.contains("↑"), Store().menuBarShowsSpeeds else {
+        guard button.image?.isTemplate == true, button.toolTip?.contains("↓") == true,
+              button.toolTip?.contains("↑") == true,
+              button.toolTip?.contains("\n") == false, Store().menuBarShowsSpeeds else {
             throw RillError("Menu bar speed mode did not apply or persist.")
         }
+        try await Task.sleep(for: .seconds(1))
         try await captureStatusButton(button, name: "09-speeds-idle", to: directory)
         store.transfers = [transfer(15)]
         indicators.update(from: store)
-        guard button.image == nil, !button.attributedTitle.string.isEmpty else {
+        guard button.image?.size.width ?? 0 > 17, button.title.isEmpty else {
             throw RillError("Speed mode was replaced by the animated icon.")
         }
+        try await Task.sleep(for: .seconds(1))
         try await captureStatusButton(button, name: "10-speeds-downloading", to: directory)
         store.menuBarShowsSpeeds = false
         indicators.update(from: store)

@@ -28,20 +28,29 @@ final class MenuBarIcon: NSObject {
     func setShowsSpeeds(_ enabled: Bool, download: Int64, upload: Int64) {
         let changed = showsSpeeds != enabled
         showsSpeeds = enabled
-        let speedLabel = "↓ " + rate(download) + "\n↑ " + rate(upload)
+        let speedLabel = "↓ " + rate(download) + "   ↑ " + rate(upload)
         if enabled {
-            button?.imagePosition = .noImage
-            button?.image = nil
+            button?.imagePosition = .imageOnly
             colorOverlay.image = nil
-            button?.attributedTitle = NSAttributedString(
+            let label = NSAttributedString(
                 string: speedLabel,
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
-                             .foregroundColor: NSColor.labelColor]
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                             .foregroundColor: NSColor.black]
             )
-            button?.setAccessibilityValue(speedLabel.replacingOccurrences(of: "\n", with: ", "))
+            let textSize = label.size()
+            let image = NSImage(size: NSSize(width: ceil(textSize.width), height: 17), flipped: false) { rect in
+                label.draw(at: NSPoint(x: 0, y: (rect.height - textSize.height) / 2))
+                return true
+            }
+            image.isTemplate = true
+            button?.image = image
+            button?.title = ""
+            button?.toolTip = speedLabel
+            button?.setAccessibilityValue(speedLabel)
         } else if changed {
             button?.imagePosition = .imageOnly
             button?.title = ""
+            button?.toolTip = nil
             button?.setAccessibilityValue(nil)
         }
         if changed {
