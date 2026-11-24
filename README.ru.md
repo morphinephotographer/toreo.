@@ -6,7 +6,7 @@
 </p>
 
 <h1 align="center">toreo.</h1>
-<p align="center">Загрузки — в строке меню.</p>
+<p align="center"><a href="README.md">English</a> · <a href="README.uk.md">Українська</a> · <strong>Русский</strong></p>
 <p align="center">[English](README.md) · [Українська](README.uk.md) · Русский</p>
 
 Нативный торрент-клиент для Apple Silicon. Добавляйте торренты и magnet-ссылки, следите за загрузками и открывайте готовые файлы в компактной панели Liquid Glass.

@@ -6,7 +6,7 @@
 </p>
 
 <h1 align="center">toreo.</h1>
-<p align="center">A small torrent client. A little more Mac.</p>
+<p align="center"><strong>English</strong> · <a href="README.uk.md">Українська</a> · <a href="README.ru.md">Русский</a></p>
 <p align="center">English · [Українська](README.uk.md) · [Русский](README.ru.md)</p>
 
 A native menu bar torrent client for Apple Silicon. Add a torrent or magnet link, follow your downloads, and open the finished files from one compact Liquid Glass panel.
